@@ -1,13 +1,6 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
-import {
-  Menu,
-  LogOut,
-  Settings,
-  ChevronDown,
-  ArrowRightLeft,
-  History,
-} from "lucide-react";
+import { Menu, LogOut, Settings, ChevronDown } from "lucide-react";
 import API from "../api";
 import Sidebar from "../components/Dashboard/Sidebar";
 import StatsGrid from "../components/Dashboard/StatsGrid";
@@ -17,7 +10,8 @@ import TransactionHistory from "./TransactionHistory";
 import ProfilePage from "./ProfilePage";
 import SupportWidget from "../components/SupportWidget";
 
-// ── Overview ──────────────────────────────────────────────────────────────────
+const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
 const Overview = ({ userData, onRefresh }) => {
   const navigate = useNavigate();
   const firstName = userData?.fullName?.split(" ")[0] || "there";
@@ -27,7 +21,6 @@ const Overview = ({ userData, onRefresh }) => {
 
   return (
     <div style={{ maxWidth: 1100 }}>
-      {/* Greeting */}
       <div style={{ marginBottom: 28 }}>
         <h1
           style={{
@@ -51,7 +44,6 @@ const Overview = ({ userData, onRefresh }) => {
 
       <StatsGrid userData={userData} />
 
-      {/* ── Account card ──────────────────────────────────────────────────── */}
       <div
         style={{
           marginTop: 24,
@@ -64,7 +56,6 @@ const Overview = ({ userData, onRefresh }) => {
           overflow: "hidden",
         }}
       >
-        {/* Decorative circles */}
         <div
           style={{
             position: "absolute",
@@ -89,11 +80,17 @@ const Overview = ({ userData, onRefresh }) => {
             pointerEvents: "none",
           }}
         />
-
         <div style={{ position: "relative", zIndex: 1 }}>
-          {/* Top row: balance left, account info right — stacks on mobile */}
-          <div className="card-top-row" style={{ marginBottom: 24 }}>
-            {/* Left: label + balance */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              gap: 20,
+              marginBottom: 24,
+            }}
+          >
             <div>
               <p
                 style={{
@@ -142,9 +139,7 @@ const Overview = ({ userData, onRefresh }) => {
                 })}
               </p>
             </div>
-
-            {/* Right: account + routing — left-aligned on mobile */}
-            <div className="card-meta">
+            <div style={{ textAlign: "right" }}>
               <div style={{ marginBottom: 14 }}>
                 <p
                   style={{
@@ -199,8 +194,6 @@ const Overview = ({ userData, onRefresh }) => {
               </div>
             </div>
           </div>
-
-          {/* Action buttons */}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               onClick={() => navigate("/dashboard/transfer")}
@@ -250,7 +243,6 @@ const Overview = ({ userData, onRefresh }) => {
         </div>
       </div>
 
-      {/* Recent transactions */}
       <div
         style={{
           marginTop: 24,
@@ -299,7 +291,6 @@ const Overview = ({ userData, onRefresh }) => {
         />
       </div>
 
-      {/* Security notice */}
       <div
         style={{
           marginTop: 18,
@@ -316,37 +307,56 @@ const Overview = ({ userData, onRefresh }) => {
         <p
           style={{ margin: 0, fontSize: 12, color: "#15803d", lineHeight: 1.5 }}
         >
-          <strong>Your account is secure.</strong> Last login:{" "}
-          {userData?.lastLogin
-            ? new Date(userData.lastLogin).toLocaleString("en-US", {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })
-            : "Just now"}
-          .
+          <strong>Your account is secure.</strong> All activity is monitored and
+          protected with 256-bit AES encryption.
         </p>
       </div>
     </div>
   );
 };
 
-// ── Dashboard shell ───────────────────────────────────────────────────────────
 export default function Dashboard({ user: propUser, onRefresh }) {
   const navigate = useNavigate();
   const [userData, setUserData] = useState(propUser);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notification, setNotification] = useState("");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const idleTimer = useRef(null);
 
   const notify = (msg) => {
     setNotification(msg);
     setTimeout(() => setNotification(""), 3500);
   };
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     localStorage.clear();
     window.location.href = "/signin";
-  };
+  }, []);
+
+  // ── Auto-logout on inactivity ─────────────────────────────────────────────
+  const resetIdleTimer = useCallback(() => {
+    clearTimeout(idleTimer.current);
+    idleTimer.current = setTimeout(handleLogout, IDLE_TIMEOUT);
+  }, [handleLogout]);
+
+  useEffect(() => {
+    const events = [
+      "mousemove",
+      "mousedown",
+      "keydown",
+      "scroll",
+      "touchstart",
+      "click",
+    ];
+    events.forEach((e) =>
+      window.addEventListener(e, resetIdleTimer, { passive: true }),
+    );
+    resetIdleTimer(); // start on mount
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, resetIdleTimer));
+      clearTimeout(idleTimer.current);
+    };
+  }, [resetIdleTimer]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -360,11 +370,9 @@ export default function Dashboard({ user: propUser, onRefresh }) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
   useEffect(() => {
     if (propUser) setUserData(propUser);
   }, [propUser]);
-
   useEffect(() => {
     const fn = (e) => {
       if (!e.target.closest(".user-menu-wrap")) setUserMenuOpen(false);
@@ -383,7 +391,6 @@ export default function Dashboard({ user: propUser, onRefresh }) {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#f8fafc" }}>
-      {/* Toast notification */}
       {notification && (
         <div
           style={{
@@ -416,7 +423,7 @@ export default function Dashboard({ user: propUser, onRefresh }) {
           minWidth: 0,
         }}
       >
-        {/* ── Topbar ─────────────────────────────────────────────────────── */}
+        {/* Topbar */}
         <div
           style={{
             padding: "0 24px",
@@ -467,7 +474,6 @@ export default function Dashboard({ user: propUser, onRefresh }) {
               marginLeft: "auto",
             }}
           >
-            {/* Account chip */}
             <div
               className="acct-chip"
               style={{
@@ -504,7 +510,6 @@ export default function Dashboard({ user: propUser, onRefresh }) {
               </span>
             </div>
 
-            {/* User dropdown */}
             <div style={{ position: "relative" }} className="user-menu-wrap">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -608,7 +613,6 @@ export default function Dashboard({ user: propUser, onRefresh }) {
                     zIndex: 200,
                   }}
                 >
-                  {/* Balance header */}
                   <div
                     style={{
                       padding: "14px 16px",
@@ -652,7 +656,6 @@ export default function Dashboard({ user: propUser, onRefresh }) {
                       Acct ···· {(userData?.accountNumber || "0000").slice(-4)}
                     </p>
                   </div>
-
                   <div style={{ padding: "6px" }}>
                     {userData?.role === "admin" && (
                       <button
@@ -680,7 +683,6 @@ export default function Dashboard({ user: propUser, onRefresh }) {
                         ⚡ Admin Panel
                       </button>
                     )}
-
                     <button
                       onClick={() => {
                         navigate("/dashboard/profile");
@@ -709,10 +711,8 @@ export default function Dashboard({ user: propUser, onRefresh }) {
                         (e.currentTarget.style.background = "none")
                       }
                     >
-                      <Settings size={15} color="#64748b" />
-                      Account Settings
+                      <Settings size={15} color="#64748b" /> Account Settings
                     </button>
-
                     <div
                       style={{
                         height: 1,
@@ -720,7 +720,6 @@ export default function Dashboard({ user: propUser, onRefresh }) {
                         margin: "4px 0",
                       }}
                     />
-
                     <button
                       onClick={handleLogout}
                       style={{
@@ -746,8 +745,7 @@ export default function Dashboard({ user: propUser, onRefresh }) {
                         (e.currentTarget.style.background = "none")
                       }
                     >
-                      <LogOut size={15} />
-                      Sign Out
+                      <LogOut size={15} /> Sign Out
                     </button>
                   </div>
                 </div>
@@ -756,7 +754,6 @@ export default function Dashboard({ user: propUser, onRefresh }) {
           </div>
         </div>
 
-        {/* ── Page content ───────────────────────────────────────────────── */}
         <main
           style={{
             flex: 1,
@@ -802,39 +799,14 @@ export default function Dashboard({ user: propUser, onRefresh }) {
       <SupportWidget />
 
       <style>{`
-        /* ── Mobile sidebar + logo ── */
-        @media (max-width: 900px) {
-          .mobile-menu-trigger { display: flex !important; }
-          .mobile-logo         { display: block !important; }
-          .acct-chip           { display: none !important; }
-          .user-name-block     { display: none !important; }
-          .desktop-sidebar     { display: none !important; }
+        @media(max-width:900px){
+          .mobile-menu-trigger{display:flex!important}
+          .mobile-logo{display:block!important}
+          .acct-chip{display:none!important}
+          .user-name-block{display:none!important}
+          .desktop-sidebar{display:none!important}
         }
-
-        /* ── Blue account card: desktop ── */
-        .card-top-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          flex-wrap: wrap;
-          gap: 20px;
-        }
-        .card-meta {
-          text-align: right;
-        }
-
-        /* ── Blue account card: mobile — stack + left-align ── */
-        @media (max-width: 600px) {
-          .card-top-row {
-            flex-direction: column;
-            gap: 20px;
-          }
-          .card-meta {
-            text-align: left;
-          }
-        }
-
-        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes spin{to{transform:rotate(360deg)}}
       `}</style>
     </div>
   );

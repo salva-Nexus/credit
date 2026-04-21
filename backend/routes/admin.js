@@ -19,10 +19,7 @@ router.get("/user/:id", admin, async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
       .select("-password")
-      .populate({
-        path: "transactions",
-        options: { sort: { date: -1 } },
-      });
+      .populate({ path: "transactions", options: { sort: { date: -1 } } });
     if (!user) return res.status(404).json({ msg: "User not found." });
     res.json(user);
   } catch {
@@ -46,7 +43,7 @@ router.put("/user/:id/balance", admin, async (req, res) => {
   }
 });
 
-// ── UPDATE USER PROFILE (admin edit) ─────────────────────────────────────────
+// ── UPDATE USER PROFILE ───────────────────────────────────────────────────────
 router.put("/user/:id/profile", admin, async (req, res) => {
   try {
     const fields = [
@@ -76,6 +73,30 @@ router.put("/user/:id/profile", admin, async (req, res) => {
   }
 });
 
+// ── EDIT TRANSACTION DATE ─────────────────────────────────────────────────────
+router.put("/transaction/:txId/edit", admin, async (req, res) => {
+  try {
+    const { date } = req.body;
+    if (!date) return res.status(400).json({ msg: "Date is required." });
+
+    const newDate = new Date(date);
+    if (isNaN(newDate.getTime()))
+      return res.status(400).json({ msg: "Invalid date." });
+
+    const tx = await Transaction.findByIdAndUpdate(
+      req.params.txId,
+      { date: newDate },
+      { new: true },
+    );
+    if (!tx) return res.status(404).json({ msg: "Transaction not found." });
+
+    res.json(tx);
+  } catch (err) {
+    console.error("Edit transaction error:", err.message);
+    res.status(500).json({ msg: "Failed to update transaction." });
+  }
+});
+
 // ── APPROVE / REJECT TRANSACTION ──────────────────────────────────────────────
 router.put("/transaction/:id/:action", admin, async (req, res) => {
   try {
@@ -94,26 +115,23 @@ router.put("/transaction/:id/:action", admin, async (req, res) => {
     if (action === "approve") {
       tx.status = "completed";
       tx.processedAt = new Date();
-
       if (tx.type === "deposit") {
         user.balance += tx.amount;
         user.totalDeposited += tx.amount;
         tx.balanceAfter = user.balance;
       } else if (tx.type === "withdrawal") {
         if (user.balance < tx.amount)
-          return res.status(400).json({ msg: "User has insufficient funds." });
+          return res.status(400).json({ msg: "Insufficient funds." });
         user.balance -= tx.amount;
         user.totalWithdrawn += tx.amount;
         tx.balanceAfter = user.balance;
       } else if (tx.type === "transfer_out") {
         if (user.balance < tx.amount)
-          return res.status(400).json({ msg: "User has insufficient funds." });
+          return res.status(400).json({ msg: "Insufficient funds." });
         user.balance -= tx.amount;
         user.totalTransferred += tx.amount;
         tx.balanceAfter = user.balance;
       }
-
-      // Send email notification
       const typeLabel =
         tx.type === "deposit"
           ? "Credit — Deposit"
@@ -127,20 +145,18 @@ router.put("/transaction/:id/:action", admin, async (req, res) => {
         "New Balance": `$${user.balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
       };
       if (tx.recipientName) details["Recipient"] = tx.recipientName;
-
       await sendEmail(
         user.email,
-        `Transaction Approved — ClearPath Bank`,
+        `Transaction Approved — Credit Vault`,
         transactionTemplate(user.fullName, typeLabel, tx.amount, details),
       );
     } else {
       tx.status = "failed";
       tx.processedAt = new Date();
       if (req.body.note) tx.adminNote = req.body.note;
-
       await sendEmail(
         user.email,
-        `Transaction Update — ClearPath Bank`,
+        `Transaction Update — Credit Vault`,
         transactionTemplate(user.fullName, "Transaction Declined", tx.amount, {
           "Transaction ID": tx._id.toString().slice(-10).toUpperCase(),
           Amount: `$${tx.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
@@ -234,10 +250,25 @@ router.post("/transaction/manual", admin, async (req, res) => {
     await tx.save();
     user.transactions.push(tx._id);
     await user.save();
-
     res.json({ msg: "Manual transaction added.", tx });
   } catch (err) {
     res.status(500).json({ msg: "Failed." });
+  }
+});
+
+// ── DELETE TRANSACTION ────────────────────────────────────────────────────────
+router.delete("/transaction/:txId", admin, async (req, res) => {
+  try {
+    const tx = await Transaction.findByIdAndDelete(req.params.txId);
+    if (!tx) return res.status(404).json({ msg: "Transaction not found." });
+
+    // Remove from user's transactions array
+    await User.updateOne({ _id: tx.user }, { $pull: { transactions: tx._id } });
+
+    res.json({ msg: "Transaction deleted." });
+  } catch (err) {
+    console.error("Delete transaction error:", err.message);
+    res.status(500).json({ msg: "Failed to delete transaction." });
   }
 });
 
