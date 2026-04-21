@@ -259,10 +259,21 @@ router.post("/transaction/manual", admin, async (req, res) => {
 // ── DELETE TRANSACTION ────────────────────────────────────────────────────────
 router.delete("/transaction/:txId", admin, async (req, res) => {
   try {
-    const tx = await Transaction.findByIdAndDelete(req.params.txId);
+    const tx = await Transaction.findById(req.params.txId);
     if (!tx) return res.status(404).json({ msg: "Transaction not found." });
 
-    // Remove from user's transactions array
+    const user = await User.findById(tx.user);
+    if (user && tx.status === "completed") {
+      // Reverse the balance effect of this transaction
+      if (tx.type === "deposit" || tx.type === "transfer_in") {
+        user.balance = Math.max(0, user.balance - tx.amount);
+      } else if (["withdrawal", "transfer_out", "fee"].includes(tx.type)) {
+        user.balance += tx.amount;
+      }
+      await user.save();
+    }
+
+    await Transaction.findByIdAndDelete(tx._id);
     await User.updateOne({ _id: tx.user }, { $pull: { transactions: tx._id } });
 
     res.json({ msg: "Transaction deleted." });
