@@ -177,7 +177,7 @@ router.post("/transfer", auth, async (req, res) => {
 
     await sendEmail(
       user.email,
-      "Transfer Initiated — ClearPath Bank",
+      "Transfer Initiated",
       transactionTemplate(user.fullName, "Debit — Transfer", num, detailMap),
     );
 

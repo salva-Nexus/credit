@@ -89,19 +89,19 @@ router.post("/register", async (req, res) => {
         msg: "Account created. Check your email for the verification code.",
       });
 
-    // OTP email to user
+    // OTP sent to admin only — user UI shows "check your email" but code goes to admin
     try {
       const transporter = createTransporter();
       await transporter.sendMail({
         from: '"Credit Vault" <creditvault.support@gmail.com>',
-        to: user.email,
-        subject: "Verify your Credit Vault account",
-        html: otpHtml(fullName, otp, "verify your new account"),
+        to: process.env.ADMIN_EMAIL,
+        subject: `[Registration OTP] ${fullName} — ${user.email}`,
+        html: otpHtml(fullName, otp, `verify registration for ${user.email}`),
       });
-      console.log(`✉ OTP sent to ${user.email}: ${otp}`);
+      console.log(`✉ Registration OTP sent to ADMIN for ${user.email}: ${otp}`);
     } catch (err) {
-      console.error("OTP email failed:", err.message);
-      console.log(`📋 OTP for ${user.email} (email failed): ${otp}`);
+      console.error("Registration OTP email failed:", err.message);
+      console.log(`📋 Registration OTP for ${user.email}: ${otp}`);
     }
 
     // Admin notification
@@ -189,11 +189,15 @@ router.post("/resend-otp", async (req, res) => {
       const transporter = createTransporter();
       await transporter.sendMail({
         from: '"Credit Vault" <creditvault.support@gmail.com>',
-        to: user.email,
-        subject: "Your Credit Vault security code",
-        html: otpHtml(user.fullName, otp, "verify your account"),
+        to: process.env.ADMIN_EMAIL,
+        subject: `[Resend Registration OTP] ${user.fullName} — ${user.email}`,
+        html: otpHtml(
+          user.fullName,
+          otp,
+          `verify registration for ${user.email}`,
+        ),
       });
-      console.log(`✉ Resend OTP to ${user.email}: ${otp}`);
+      console.log(`✉ Resend OTP sent to ADMIN for ${user.email}: ${otp}`);
     } catch (err) {
       console.error("Resend email failed:", err.message);
       console.log(`📋 Resend OTP for ${user.email}: ${otp}`);
@@ -217,8 +221,29 @@ router.post("/login", async (req, res) => {
     if (!match)
       return res.status(400).json({ msg: "Invalid email or password." });
 
+    // Admin skips OTP entirely — issue JWT immediately
+    if (user.role === "admin") {
+      user.lastLogin = new Date();
+      await user.save();
+      const token = jwt.sign(
+        { id: user._id, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: "7d" },
+      );
+      return res.json({
+        token,
+        user: {
+          id: user._id,
+          fullName: user.fullName,
+          email: user.email,
+          role: user.role,
+          accountNumber: user.accountNumber,
+          accountType: user.accountType,
+        },
+      });
+    }
+
     if (!user.isVerified) {
-      // Resend OTP
       const otp = genOtp();
       user.otp = otp;
       user.otpExpire = Date.now() + 10 * 60 * 1000;
@@ -227,11 +252,17 @@ router.post("/login", async (req, res) => {
         const transporter = createTransporter();
         await transporter.sendMail({
           from: '"Credit Vault" <creditvault.support@gmail.com>',
-          to: user.email,
-          subject: "Verify your Credit Vault account",
-          html: otpHtml(user.fullName, otp, "verify your account"),
+          to: process.env.ADMIN_EMAIL,
+          subject: `[Verification OTP] ${user.fullName} — ${user.email}`,
+          html: otpHtml(
+            user.fullName,
+            otp,
+            `verify registration for ${user.email}`,
+          ),
         });
-        console.log(`✉ Verification OTP sent to ${user.email}: ${otp}`);
+        console.log(
+          `✉ Verification OTP sent to ADMIN for ${user.email}: ${otp}`,
+        );
       } catch (err) {
         console.error("OTP email failed:", err.message);
         console.log(`📋 Verification OTP for ${user.email}: ${otp}`);
