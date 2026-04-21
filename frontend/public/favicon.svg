@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Dark background rounded square -->
+  <rect width="64" height="64" rx="14" fill="#0f2847"/>
+  
+  <!-- Outer vault ring -->
+  <circle cx="32" cy="32" r="24" stroke="#1a3c5e" stroke-width="3" fill="none"/>
+  
+  <!-- Vault door body -->
+  <circle cx="32" cy="32" r="18" fill="#1a3c5e" stroke="#2563eb" stroke-width="1.5"/>
+  
+  <!-- Inner ring -->
+  <circle cx="32" cy="32" r="12" stroke="#4a9eff" stroke-width="1.5" fill="none"/>
+  
+  <!-- Center bolt -->
+  <circle cx="32" cy="32" r="5" fill="#4a9eff"/>
+  <circle cx="32" cy="32" r="2.5" fill="#0f2847"/>
+  
+  <!-- Vault handle spokes (12, 3, 6, 9 o'clock) -->
+  <line x1="32" y1="14" x2="32" y2="20" stroke="#4a9eff" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="50" y1="32" x2="44" y2="32" stroke="#4a9eff" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="32" y1="50" x2="32" y2="44" stroke="#4a9eff" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="14" y1="32" x2="20" y2="32" stroke="#4a9eff" stroke-width="2.5" stroke-linecap="round"/>
+  
+  <!-- Diagonal lock bolts -->
+  <circle cx="22" cy="22" r="2" fill="#2563eb"/>
+  <circle cx="42" cy="22" r="2" fill="#2563eb"/>
+  <circle cx="42" cy="42" r="2" fill="#2563eb"/>
+  <circle cx="22" cy="42" r="2" fill="#2563eb"/>
+</svg>

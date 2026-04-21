@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+
+# Block authenticated/private dashboard routes from indexing
+Disallow: /dashboard/
+Disallow: /admin/
+Disallow: /api/
+
+# Block utility and asset paths
+Disallow: /src/
+Disallow: /*.jsx$
+Disallow: /*.json$
+
+# Sitemap location
+Sitemap: https://creditvault.org/sitemap.xml
