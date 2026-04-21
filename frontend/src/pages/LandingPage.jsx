@@ -1696,6 +1696,10 @@ export default function LandingPage() {
         @media(max-width:768px){
           .hero-grid{grid-template-columns:1fr!important; gap:40px!important}
           .split-grid{grid-template-columns:1fr!important; gap:40px!important}
+          .stats-grid{grid-template-columns:repeat(2,1fr)!important}
+        }
+        @media(max-width:480px){
+          .stats-grid{grid-template-columns:1fr!important}
         }
       `}</style>
     </div>
