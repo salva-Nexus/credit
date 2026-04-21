@@ -263,13 +263,9 @@ router.delete("/transaction/:txId", admin, async (req, res) => {
     if (!tx) return res.status(404).json({ msg: "Transaction not found." });
 
     const user = await User.findById(tx.user);
-    if (user && tx.status === "completed") {
-      // Reverse the balance effect of this transaction
-      if (tx.type === "deposit" || tx.type === "transfer_in") {
-        user.balance = Math.max(0, user.balance - tx.amount);
-      } else if (["withdrawal", "transfer_out", "fee"].includes(tx.type)) {
-        user.balance += tx.amount;
-      }
+    // Only deduct from balance if it was a completed deposit
+    if (user && tx.status === "completed" && tx.type === "deposit") {
+      user.balance = Math.max(0, user.balance - tx.amount);
       await user.save();
     }
 
