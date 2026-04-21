@@ -6,21 +6,15 @@ import {
   Zap,
   Globe,
   Phone,
-  CreditCard,
-  TrendingUp,
-  ArrowRight,
   CheckCircle,
   Star,
   Lock,
   Clock,
   HeadphonesIcon,
-  Building,
-  Users,
-  Award,
   ChevronDown,
+  PiggyBank,
 } from "lucide-react";
 
-// ── Animated counter ──────────────────────────────────────────────────────────
 const Counter = ({ end, prefix = "", suffix = "", decimals = 0 }) => {
   const [count, setCount] = useState(0);
   const ref = useRef();
@@ -49,7 +43,6 @@ const Counter = ({ end, prefix = "", suffix = "", decimals = 0 }) => {
   );
 };
 
-// ── Section wrapper ───────────────────────────────────────────────────────────
 const Reveal = ({ children, delay = 0, style }) => {
   const ref = useRef();
   const inView = useInView(ref, { once: true, margin: "-60px" });
@@ -101,14 +94,14 @@ export default function LandingPage() {
       desc: "Send money to 50+ countries worldwide. We handle the complexity of SWIFT codes, IBAN numbers, and local banking requirements for you.",
     },
     {
-      icon: TrendingUp,
-      title: "High-Yield Savings",
-      desc: "Earn up to 4.75% APY on your savings — more than 10x the national average. No minimum balance required to earn the full rate.",
+      icon: PiggyBank,
+      title: "Savings Account",
+      desc: "Open a savings account with no minimum balance, no monthly fees, and full FDIC insurance up to $250,000. Your money is always safe and accessible.",
     },
     {
       icon: Phone,
       title: "Mobile Banking",
-      desc: "Manage every aspect of your finances from your smartphone. Deposit checks, pay bills, transfer funds — all from a beautifully designed app.",
+      desc: "Manage every aspect of your finances from your smartphone. Pay bills, transfer funds, view statements — all from a beautifully designed app.",
     },
     {
       icon: HeadphonesIcon,
@@ -133,18 +126,18 @@ export default function LandingPage() {
       ],
     },
     {
-      name: "Premium Savings",
-      price: "4.75%",
-      period: "APY",
+      name: "Savings Account",
+      price: "$0",
+      period: "/month",
       highlight: true,
       badge: "Most Popular",
       features: [
-        "Highest available APY",
         "No minimum balance",
         "No monthly fees",
         "Linked to checking",
         "Automatic savings rules",
         "FDIC insured to $250K",
+        "Instant transfers",
       ],
     },
     {
@@ -174,7 +167,7 @@ export default function LandingPage() {
       name: "James Okoye",
       role: "Software Engineer, San Francisco",
       rating: 5,
-      text: "The savings account APY is real — I checked. It's been consistently paying out every month. The app is cleaner than any other bank I've used.",
+      text: "The savings account is great — no fees, no minimums. The app is cleaner than any other bank I've used.",
     },
     {
       name: "Maria Santos",
@@ -266,7 +259,6 @@ export default function LandingPage() {
           paddingTop: 80,
         }}
       >
-        {/* Background geometric shapes */}
         <div
           style={{
             position: "absolute",
@@ -290,19 +282,6 @@ export default function LandingPage() {
             borderRadius: "50%",
             background:
               "radial-gradient(circle, rgba(22,163,74,0.07) 0%, transparent 70%)",
-            pointerEvents: "none",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            top: "40%",
-            left: "30%",
-            width: 200,
-            height: 200,
-            borderRadius: "50%",
-            background:
-              "radial-gradient(circle, rgba(26,60,94,0.04) 0%, transparent 70%)",
             pointerEvents: "none",
           }}
         />
@@ -352,7 +331,6 @@ export default function LandingPage() {
                   FDIC Insured · Member Since 1998
                 </span>
               </div>
-
               <h1
                 style={{
                   margin: "0 0 8px",
@@ -384,7 +362,6 @@ export default function LandingPage() {
                   {heroTexts[heroTextIndex]}
                 </motion.h1>
               </div>
-
               <p
                 style={{
                   margin: "0 0 36px",
@@ -398,7 +375,6 @@ export default function LandingPage() {
                 bank with the speed and simplicity of modern technology. Open an
                 account in under 5 minutes.
               </p>
-
               <div
                 style={{
                   display: "flex",
@@ -415,14 +391,10 @@ export default function LandingPage() {
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = "#0f2847";
-                    e.currentTarget.style.boxShadow =
-                      "0 8px 32px rgba(26,60,94,0.35)";
                     e.currentTarget.style.transform = "translateY(-1px)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = "#1a3c5e";
-                    e.currentTarget.style.boxShadow =
-                      "0 4px 20px rgba(26,60,94,0.25)";
                     e.currentTarget.style.transform = "none";
                   }}
                 >
@@ -435,7 +407,6 @@ export default function LandingPage() {
                     background: "white",
                     color: "#1a3c5e",
                     border: "2px solid #e2e8f0",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.borderColor = "#1a3c5e";
@@ -449,7 +420,6 @@ export default function LandingPage() {
                   Sign In
                 </Link>
               </div>
-
               <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
                 {[
                   { icon: Shield, text: "FDIC Insured" },
@@ -475,7 +445,6 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Hero card mockup */}
             <div
               style={{
                 display: "flex",
@@ -484,7 +453,6 @@ export default function LandingPage() {
               }}
             >
               <div style={{ width: "100%", maxWidth: 400 }}>
-                {/* Bank card */}
                 <motion.div
                   initial={{ opacity: 0, y: 20, rotate: -2 }}
                   animate={{ opacity: 1, y: 0, rotate: -2 }}
@@ -544,7 +512,7 @@ export default function LandingPage() {
                         Credit Vault
                       </span>
                     </div>
-                    <div style={{ display: "flex", gap: -4 }}>
+                    <div style={{ display: "flex" }}>
                       <div
                         style={{
                           width: 28,
@@ -616,8 +584,6 @@ export default function LandingPage() {
                     </div>
                   </div>
                 </motion.div>
-
-                {/* Balance card */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -659,8 +625,8 @@ export default function LandingPage() {
                   <div style={{ display: "flex", gap: 10 }}>
                     {[
                       { label: "Transfer", color: "#1a3c5e" },
-                      { label: "Deposit", color: "#16a34a" },
                       { label: "Pay", color: "#7c3aed" },
+                      { label: "History", color: "#0891b2" },
                     ].map(({ label, color }) => (
                       <div
                         key={label}
@@ -697,8 +663,6 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
-
-          {/* Scroll indicator */}
           <div
             style={{
               textAlign: "center",
@@ -720,7 +684,7 @@ export default function LandingPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              gridTemplateColumns: "repeat(5, 1fr)",
               gap: 1,
               background: "rgba(255,255,255,0.06)",
               borderRadius: 16,
@@ -737,31 +701,31 @@ export default function LandingPage() {
                 decimals: 1,
               },
               {
-                value: 3,
+                value: 4.8,
                 prefix: "",
                 suffix: "M+",
                 label: "Active Account Holders",
-                decimals: 0,
+                decimals: 1,
               },
               {
-                value: 178,
+                value: 50,
                 prefix: "",
-                suffix: "",
-                label: "Countries for Wire Transfers",
+                suffix: "+",
+                label: "Wire Transfer Countries",
                 decimals: 0,
               },
               {
-                value: 99.99,
+                value: 99.9,
                 prefix: "",
                 suffix: "%",
-                label: "Platform Uptime SLA",
-                decimals: 2,
+                label: "Platform Uptime",
+                decimals: 1,
               },
               {
                 value: 26,
                 prefix: "$",
                 suffix: "B+",
-                label: "Transactions Processed (2024)",
+                label: "Transactions Processed",
                 decimals: 0,
               },
             ].map(({ value, prefix, suffix, label, decimals }) => (
@@ -769,17 +733,17 @@ export default function LandingPage() {
                 key={label}
                 style={{
                   background: "#0f172a",
-                  padding: "36px 28px",
+                  padding: "32px 16px",
                   textAlign: "center",
                 }}
               >
                 <p
                   style={{
                     margin: "0 0 8px",
-                    fontSize: 38,
+                    fontSize: "clamp(16px, 1.8vw, 28px)",
                     fontWeight: 900,
                     color: "white",
-                    letterSpacing: "-1px",
+                    letterSpacing: "-0.5px",
                   }}
                 >
                   <Counter
@@ -792,10 +756,10 @@ export default function LandingPage() {
                 <p
                   style={{
                     margin: 0,
-                    fontSize: 12,
+                    fontSize: 11,
                     color: "#64748b",
                     textTransform: "uppercase",
-                    letterSpacing: "0.1em",
+                    letterSpacing: "0.08em",
                     lineHeight: 1.5,
                   }}
                 >
@@ -968,7 +932,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── SECURITY SECTION ──────────────────────────────────────────────── */}
+      {/* ── SECURITY ──────────────────────────────────────────────────────── */}
       <section
         style={{ padding: "96px 32px", background: "#f8fafc" }}
         id="security"
@@ -1117,33 +1081,13 @@ export default function LandingPage() {
                   </p>
                 </div>
                 {[
-                  { label: "Encryption", status: "AES-256 Active", ok: true },
-                  {
-                    label: "Fraud Detection",
-                    status: "Real-time Active",
-                    ok: true,
-                  },
-                  {
-                    label: "DDoS Protection",
-                    status: "Cloudflare Active",
-                    ok: true,
-                  },
-                  {
-                    label: "Backup Systems",
-                    status: "99.99% Uptime",
-                    ok: true,
-                  },
-                  {
-                    label: "Data Centers",
-                    status: "3 Geographic Regions",
-                    ok: true,
-                  },
-                  {
-                    label: "Penetration Tests",
-                    status: "Last: 7 days ago",
-                    ok: true,
-                  },
-                ].map(({ label, status, ok }) => (
+                  { label: "Encryption", status: "AES-256 Active" },
+                  { label: "Fraud Detection", status: "Real-time Active" },
+                  { label: "DDoS Protection", status: "Cloudflare Active" },
+                  { label: "Backup Systems", status: "99.99% Uptime" },
+                  { label: "Data Centers", status: "3 Geographic Regions" },
+                  { label: "Penetration Tests", status: "Last: 7 days ago" },
+                ].map(({ label, status }) => (
                   <div
                     key={label}
                     style={{
@@ -1350,7 +1294,7 @@ export default function LandingPage() {
                         fontWeight: 700,
                         fontSize: 14,
                         textDecoration: "none",
-                        border: `2px solid #1a3c5e`,
+                        border: "2px solid #1a3c5e",
                         transition: "all 0.15s",
                       }}
                       onMouseEnter={(e) => {
@@ -1374,7 +1318,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── TESTIMONIALS ─────────────────────────────────────────────────── */}
+      {/* ── TESTIMONIALS ──────────────────────────────────────────────────── */}
       <section style={{ padding: "96px 32px", background: "#f8fafc" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <Reveal style={{ textAlign: "center", marginBottom: 56 }}>
@@ -1576,7 +1520,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── CTA FINAL ────────────────────────────────────────────────────── */}
+      {/* ── CTA ───────────────────────────────────────────────────────────── */}
       <section style={{ padding: "96px 32px", background: "#0f172a" }}>
         <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
           <Reveal>
@@ -1694,12 +1638,14 @@ export default function LandingPage() {
       <style>{`
         @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
         @media(max-width:768px){
-          .hero-grid{grid-template-columns:1fr!important; gap:40px!important}
-          .split-grid{grid-template-columns:1fr!important; gap:40px!important}
-          .stats-grid{grid-template-columns:repeat(2,1fr)!important}
+          .hero-grid{grid-template-columns:1fr!important;gap:40px!important}
+          .split-grid{grid-template-columns:1fr!important;gap:40px!important}
         }
-        @media(max-width:480px){
-          .stats-grid{grid-template-columns:1fr!important}
+        @media(max-width:900px){
+          section > div > div[style*="repeat(5, 1fr)"]{grid-template-columns:repeat(3,1fr)!important}
+        }
+        @media(max-width:560px){
+          section > div > div[style*="repeat(5, 1fr)"]{grid-template-columns:repeat(2,1fr)!important}
         }
       `}</style>
     </div>
