@@ -21,8 +21,18 @@ import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 
 const ScrollToTop = () => {
-  const { pathname } = useLocation();
-  useEffect(() => window.scrollTo(0, 0), [pathname]);
+  const { pathname, hash } = useLocation();
+  useEffect(() => {
+    // Don't scroll to top if there's a hash — let the browser handle it
+    if (hash) {
+      setTimeout(() => {
+        const el = document.getElementById(hash.replace("#", ""));
+        if (el) el.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    } else {
+      window.scrollTo(0, 0);
+    }
+  }, [pathname, hash]);
   return null;
 };
 
