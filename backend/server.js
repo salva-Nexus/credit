@@ -30,6 +30,21 @@ mongoose
     console.log("MongoDB connected");
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+    // ===============================================
+    // KEEP-ALIVE
+    // ===============================================
+    const INTERVAL = 10 * 60 * 1000;
+    const KEEP_ALIVE_URL =
+      "https://credit-backend-epij.onrender.com/api/health";
+
+    function reloadWebsite() {
+      fetch(KEEP_ALIVE_URL)
+        .then(() => console.log("⚓ Keep-Alive: Self-ping successful"))
+        .catch((err) => console.error("⚓ Keep-Alive Error:", err.message));
+    }
+
+    setInterval(reloadWebsite, INTERVAL);
   })
   .catch((err) => {
     console.error("MongoDB connection error:", err.message);

@@ -35,13 +35,13 @@ export default function SignIn({ onLogin }) {
   const otpValue = otp.join("");
   const verifyOtpValue = verifyOtp.join("");
 
-  const handleOtpChange = (arr, setArr, index, val) => {
+  const handleOtpChange = (arr, setArr, index, val, prefix = "otp") => {
     const digit = val.replace(/\D/g, "").slice(-1);
     const next = [...arr];
     next[index] = digit;
     setArr(next);
     if (digit && index < 5)
-      document.getElementById(`otp-${index + 1}`)?.focus();
+      document.getElementById(`${prefix}-${index + 1}`)?.focus();
   };
 
   const handleOtpKeyDown = (arr, setArr, index, e) => {
@@ -79,7 +79,7 @@ export default function SignIn({ onLogin }) {
       </div>
     ) : null;
 
-  const OtpBoxes = ({ arr, setArr, prefix = "otp" }) => (
+  const renderOtpBoxes = (arr, setArr, prefix = "otp") => (
     <div
       style={{
         display: "flex",
@@ -97,7 +97,9 @@ export default function SignIn({ onLogin }) {
           inputMode="numeric"
           maxLength={1}
           value={digit}
-          onChange={(e) => handleOtpChange(arr, setArr, i, e.target.value)}
+          onChange={(e) =>
+            handleOtpChange(arr, setArr, i, e.target.value, prefix)
+          }
           onKeyDown={(e) => handleOtpKeyDown(arr, setArr, i, e)}
           autoFocus={i === 0}
           style={{
@@ -612,7 +614,7 @@ export default function SignIn({ onLogin }) {
               </p>
               <StatusBox />
               <form onSubmit={handleOtpSubmit}>
-                <OtpBoxes arr={otp} setArr={setOtp} prefix="otp" />
+                {renderOtpBoxes(otp, setOtp, "otp")}
                 <button
                   type="submit"
                   disabled={loading || otpValue.length !== 6}
@@ -685,11 +687,7 @@ export default function SignIn({ onLogin }) {
               </p>
               <StatusBox />
               <form onSubmit={handleVerifyAccount}>
-                <OtpBoxes
-                  arr={verifyOtp}
-                  setArr={setVerifyOtp}
-                  prefix="verify"
-                />
+                {renderOtpBoxes(verifyOtp, setVerifyOtp, "verify")}
                 <button
                   type="submit"
                   disabled={loading || verifyOtpValue.length !== 6}
