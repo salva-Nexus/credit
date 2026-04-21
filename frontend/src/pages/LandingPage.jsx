@@ -737,9 +737,9 @@ export default function LandingPage() {
                 decimals: 1,
               },
               {
-                value: 4800000,
+                value: 3,
                 prefix: "",
-                suffix: "+",
+                suffix: "M+",
                 label: "Active Account Holders",
                 decimals: 0,
               },
