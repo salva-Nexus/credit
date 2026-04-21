@@ -10,6 +10,7 @@ import {
   EyeOff,
   CheckCircle,
   Shield,
+  Mail,
 } from "lucide-react";
 import API from "../api";
 
@@ -67,18 +68,21 @@ export default function ProfilePage({ userData, onUpdate, notify }) {
     state: userData?.state || "",
     zipCode: userData?.zipCode || "",
   });
-  const [pw, setPw] = useState({ current: "", newPw: "", confirm: "" });
-  const [showPw, setShowPw] = useState({
-    current: false,
-    newPw: false,
-    confirm: false,
-  });
+  const [pw, setPw] = useState({ newPw: "", confirm: "" });
+  const [showPw, setShowPw] = useState({ newPw: false, confirm: false });
   const [focused, setFocused] = useState({});
   const [photoLoading, setPhotoLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [pwLoading, setPwLoading] = useState(false);
   const [pwStatus, setPwStatus] = useState({ type: "", msg: "" });
   const [pwDone, setPwDone] = useState(false);
+
+  // OTP flow: 'idle' | 'sending' | 'verify' | 'ready'
+  const [otpStep, setOtpStep] = useState("idle");
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpStatus, setOtpStatus] = useState({ type: "", msg: "" });
+
   const fileRef = useRef();
 
   const handlePhotoChange = async (e) => {
@@ -88,13 +92,12 @@ export default function ProfilePage({ userData, onUpdate, notify }) {
     setPhotoLoading(true);
     const reader = new FileReader();
     reader.onload = async (ev) => {
-      const base64 = ev.target.result;
       try {
-        await API.put("/api/auth/profile", { profilePhoto: base64 });
+        await API.put("/api/auth/profile", { profilePhoto: ev.target.result });
         const stored = JSON.parse(localStorage.getItem("user") || "{}");
         localStorage.setItem(
           "user",
-          JSON.stringify({ ...stored, profilePhoto: base64 }),
+          JSON.stringify({ ...stored, profilePhoto: ev.target.result }),
         );
         onUpdate?.();
         notify("Profile photo updated");
@@ -123,13 +126,81 @@ export default function ProfilePage({ userData, onUpdate, notify }) {
     }
   };
 
+  // Step 1 — Send OTP to email
+  const handleRequestOtp = async () => {
+    setOtpLoading(true);
+    setOtpStatus({ type: "", msg: "" });
+    try {
+      await API.post("/api/auth/send-password-change-otp");
+      setOtpStep("verify");
+      setOtpStatus({
+        type: "success",
+        msg: `A 6-digit code was sent to ${userData?.email}`,
+      });
+    } catch (err) {
+      setOtpStatus({
+        type: "error",
+        msg: err.response?.data?.msg || "Failed to send code.",
+      });
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // OTP input handlers
+  const handleOtpChange = (index, val) => {
+    const digit = val.replace(/\D/g, "").slice(-1);
+    const next = [...otp];
+    next[index] = digit;
+    setOtp(next);
+    if (digit && index < 5)
+      document.getElementById(`pw-otp-${index + 1}`)?.focus();
+  };
+
+  const handleOtpKeyDown = (index, e) => {
+    if (e.key === "Backspace" && !otp[index] && index > 0)
+      document.getElementById(`pw-otp-${index - 1}`)?.focus();
+  };
+
+  const handleOtpPaste = (e) => {
+    e.preventDefault();
+    const pasted = e.clipboardData
+      .getData("text")
+      .replace(/\D/g, "")
+      .slice(0, 6);
+    if (pasted.length === 6) {
+      setOtp(pasted.split(""));
+      document.getElementById("pw-otp-5")?.focus();
+    }
+  };
+
+  // Step 2 — Verify OTP
+  const handleVerifyOtp = async () => {
+    const code = otp.join("");
+    if (code.length !== 6)
+      return setOtpStatus({ type: "error", msg: "Enter all 6 digits." });
+    setOtpLoading(true);
+    setOtpStatus({ type: "", msg: "" });
+    try {
+      await API.post("/api/auth/verify-password-change-otp", { otp: code });
+      setOtpStep("ready");
+      setOtpStatus({
+        type: "success",
+        msg: "Identity verified. Enter your new password.",
+      });
+    } catch (err) {
+      setOtpStatus({
+        type: "error",
+        msg: err.response?.data?.msg || "Invalid or expired code.",
+      });
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // Step 3 — Change password
   const handlePasswordChange = async (e) => {
     e.preventDefault();
-    if (!pw.current)
-      return setPwStatus({
-        type: "error",
-        msg: "Enter your current password.",
-      });
     if (pw.newPw !== pw.confirm)
       return setPwStatus({ type: "error", msg: "Passwords do not match." });
     if (pw.newPw.length < 8)
@@ -140,18 +211,19 @@ export default function ProfilePage({ userData, onUpdate, notify }) {
     setPwLoading(true);
     setPwStatus({ type: "", msg: "" });
     try {
-      await API.post("/api/auth/change-password", {
-        currentPassword: pw.current,
+      await API.post("/api/auth/change-password-verified", {
         newPassword: pw.newPw,
       });
       setPwDone(true);
-      setPw({ current: "", newPw: "", confirm: "" });
+      setPw({ newPw: "", confirm: "" });
+      setOtpStep("idle");
+      setOtp(["", "", "", "", "", ""]);
       notify("Password updated successfully");
       setTimeout(() => setPwDone(false), 5000);
     } catch (err) {
       setPwStatus({
         type: "error",
-        msg: err.response?.data?.msg || "Incorrect current password.",
+        msg: err.response?.data?.msg || "Password update failed.",
       });
     } finally {
       setPwLoading(false);
@@ -166,9 +238,25 @@ export default function ProfilePage({ userData, onUpdate, notify }) {
     .slice(0, 2)
     .toUpperCase();
 
+  const StatusBox = ({ status }) =>
+    status.msg ? (
+      <div
+        style={{
+          padding: "10px 14px",
+          borderRadius: 8,
+          marginBottom: 16,
+          fontSize: 13,
+          background: status.type === "error" ? "#fef2f2" : "#f0fdf4",
+          border: `1px solid ${status.type === "error" ? "#fecaca" : "#bbf7d0"}`,
+          color: status.type === "error" ? "#dc2626" : "#15803d",
+        }}
+      >
+        {status.msg}
+      </div>
+    ) : null;
+
   return (
     <div style={{ maxWidth: 700 }}>
-      {/* Back button */}
       <button
         onClick={() => navigate("/dashboard")}
         style={{
@@ -183,7 +271,6 @@ export default function ProfilePage({ userData, onUpdate, notify }) {
           fontWeight: 500,
           marginBottom: 24,
           padding: 0,
-          transition: "color 0.15s",
         }}
         onMouseEnter={(e) => (e.currentTarget.style.color = "#1a3c5e")}
         onMouseLeave={(e) => (e.currentTarget.style.color = "#64748b")}
@@ -295,7 +382,6 @@ export default function ProfilePage({ userData, onUpdate, notify }) {
             style={{ display: "none" }}
           />
         </div>
-
         <div style={{ flex: 1 }}>
           <p
             style={{
@@ -329,7 +415,6 @@ export default function ProfilePage({ userData, onUpdate, notify }) {
             <Camera size={13} /> Change Photo
           </button>
         </div>
-
         <div
           style={{
             padding: "14px 18px",
@@ -522,7 +607,7 @@ export default function ProfilePage({ userData, onUpdate, notify }) {
         </form>
       </Section>
 
-      {/* Change Password */}
+      {/* Change Password with OTP */}
       <Section icon={Lock} title="Change Password">
         {pwDone ? (
           <div
@@ -550,123 +635,336 @@ export default function ProfilePage({ userData, onUpdate, notify }) {
           </div>
         ) : (
           <>
-            {pwStatus.msg && (
-              <div
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 8,
-                  marginBottom: 16,
-                  fontSize: 13,
-                  background: pwStatus.type === "error" ? "#fef2f2" : "#f0fdf4",
-                  border: `1px solid ${pwStatus.type === "error" ? "#fecaca" : "#bbf7d0"}`,
-                  color: pwStatus.type === "error" ? "#dc2626" : "#15803d",
-                }}
-              >
-                {pwStatus.msg}
-              </div>
-            )}
-            <form
-              onSubmit={handlePasswordChange}
+            {/* Step indicator */}
+            <div
               style={{
                 display: "flex",
-                flexDirection: "column",
-                gap: 14,
-                maxWidth: 420,
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 20,
               }}
             >
-              {[
-                {
-                  key: "current",
-                  label: "Current Password",
-                  placeholder: "Enter your current password",
+              {["Request Code", "Verify Identity", "New Password"].map(
+                (label, i) => {
+                  const stepNum = i + 1;
+                  const currentStep =
+                    otpStep === "idle" ? 1 : otpStep === "verify" ? 2 : 3;
+                  const done = stepNum < currentStep;
+                  const active = stepNum === currentStep;
+                  return (
+                    <React.Fragment key={label}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: "50%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            background: done
+                              ? "#16a34a"
+                              : active
+                                ? "#1a3c5e"
+                                : "#f1f5f9",
+                            color: done || active ? "white" : "#94a3b8",
+                          }}
+                        >
+                          {done ? "✓" : stepNum}
+                        </div>
+                        <span
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: active ? "#0f172a" : "#94a3b8",
+                          }}
+                        >
+                          {label}
+                        </span>
+                      </div>
+                      {i < 2 && (
+                        <div
+                          style={{
+                            flex: 1,
+                            height: 1,
+                            background: done ? "#16a34a" : "#e2e8f0",
+                            maxWidth: 40,
+                          }}
+                        />
+                      )}
+                    </React.Fragment>
+                  );
                 },
-                {
-                  key: "newPw",
-                  label: "New Password",
-                  placeholder: "At least 8 characters",
-                },
-                {
-                  key: "confirm",
-                  label: "Confirm New Password",
-                  placeholder: "Repeat new password",
-                },
-              ].map(({ key, label, placeholder }) => (
-                <div key={key}>
-                  <label
+              )}
+            </div>
+
+            {/* Step 1 — Request OTP */}
+            {otpStep === "idle" && (
+              <div>
+                <StatusBox status={otpStatus} />
+                <p
+                  style={{
+                    fontSize: 14,
+                    color: "#64748b",
+                    marginBottom: 16,
+                    lineHeight: 1.6,
+                  }}
+                >
+                  To change your password, we'll send a verification code to{" "}
+                  <strong style={{ color: "#0f172a" }}>
+                    {userData?.email}
+                  </strong>
+                  .
+                </p>
+                <button
+                  onClick={handleRequestOtp}
+                  disabled={otpLoading}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "10px 22px",
+                    borderRadius: 8,
+                    background: "#1a3c5e",
+                    color: "white",
+                    fontWeight: 600,
+                    fontSize: 14,
+                    border: "none",
+                    cursor: "pointer",
+                    opacity: otpLoading ? 0.7 : 1,
+                  }}
+                >
+                  <Mail size={15} />{" "}
+                  {otpLoading ? "Sending…" : "Send Verification Code"}
+                </button>
+              </div>
+            )}
+
+            {/* Step 2 — Verify OTP */}
+            {otpStep === "verify" && (
+              <div>
+                <StatusBox status={otpStatus} />
+                <p style={{ fontSize: 14, color: "#64748b", marginBottom: 16 }}>
+                  Enter the 6-digit code sent to{" "}
+                  <strong style={{ color: "#0f172a" }}>
+                    {userData?.email}
+                  </strong>
+                </p>
+                <div
+                  style={{ display: "flex", gap: 10, marginBottom: 20 }}
+                  onPaste={handleOtpPaste}
+                >
+                  {otp.map((digit, i) => (
+                    <input
+                      key={i}
+                      id={`pw-otp-${i}`}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      onChange={(e) => handleOtpChange(i, e.target.value)}
+                      onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                      autoFocus={i === 0}
+                      style={{
+                        width: 50,
+                        height: 56,
+                        borderRadius: 9,
+                        textAlign: "center",
+                        fontSize: 22,
+                        fontWeight: 800,
+                        fontFamily: "monospace",
+                        border: `2px solid ${digit ? "#1a3c5e" : "#e2e8f0"}`,
+                        background: digit ? "#eff6ff" : "white",
+                        color: "#0f172a",
+                        outline: "none",
+                        transition: "all 0.15s",
+                        boxShadow: digit
+                          ? "0 0 0 3px rgba(26,60,94,0.1)"
+                          : "none",
+                      }}
+                    />
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    onClick={handleVerifyOtp}
+                    disabled={otpLoading || otp.join("").length !== 6}
                     style={{
-                      display: "block",
-                      fontSize: 12,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "10px 22px",
+                      borderRadius: 8,
+                      background: "#1a3c5e",
+                      color: "white",
                       fontWeight: 600,
-                      color: "#374151",
-                      marginBottom: 5,
+                      fontSize: 14,
+                      border: "none",
+                      cursor: "pointer",
+                      opacity:
+                        otpLoading || otp.join("").length !== 6 ? 0.6 : 1,
                     }}
                   >
-                    {label}
-                  </label>
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type={showPw[key] ? "text" : "password"}
-                      required
-                      placeholder={placeholder}
-                      value={pw[key]}
-                      onChange={(e) =>
-                        setPw((p) => ({ ...p, [key]: e.target.value }))
-                      }
-                      style={{ ...inp(focused[`pw_${key}`]), paddingRight: 44 }}
-                      onFocus={() =>
-                        setFocused((f) => ({ ...f, [`pw_${key}`]: true }))
-                      }
-                      onBlur={() =>
-                        setFocused((f) => ({ ...f, [`pw_${key}`]: false }))
-                      }
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShowPw((s) => ({ ...s, [key]: !s[key] }))
-                      }
-                      style={{
-                        position: "absolute",
-                        right: 12,
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        color: "#94a3b8",
-                      }}
-                    >
-                      {showPw[key] ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
-                  </div>
+                    <Shield size={15} />{" "}
+                    {otpLoading ? "Verifying…" : "Verify Code"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setOtpStep("idle");
+                      setOtp(["", "", "", "", "", ""]);
+                      setOtpStatus({ type: "", msg: "" });
+                    }}
+                    style={{
+                      padding: "10px 16px",
+                      borderRadius: 8,
+                      border: "1.5px solid #e2e8f0",
+                      background: "white",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: "#374151",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
                 </div>
-              ))}
-              <button
-                type="submit"
-                disabled={pwLoading}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "10px 22px",
-                  borderRadius: 8,
-                  background: "#1a3c5e",
-                  color: "white",
-                  fontWeight: 600,
-                  fontSize: 14,
-                  border: "none",
-                  cursor: "pointer",
-                  opacity: pwLoading ? 0.7 : 1,
-                  width: "fit-content",
-                }}
-              >
-                <Lock size={15} /> {pwLoading ? "Updating…" : "Update Password"}
-              </button>
-            </form>
+                <button
+                  onClick={handleRequestOtp}
+                  disabled={otpLoading}
+                  style={{
+                    marginTop: 12,
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    color: "#1a3c5e",
+                    fontWeight: 500,
+                  }}
+                >
+                  Didn't get it? Resend code
+                </button>
+              </div>
+            )}
+
+            {/* Step 3 — New password */}
+            {otpStep === "ready" && (
+              <div>
+                <StatusBox status={otpStatus} />
+                <StatusBox status={pwStatus} />
+                <form
+                  onSubmit={handlePasswordChange}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 14,
+                    maxWidth: 420,
+                  }}
+                >
+                  {[
+                    {
+                      key: "newPw",
+                      label: "New Password",
+                      placeholder: "At least 8 characters",
+                    },
+                    {
+                      key: "confirm",
+                      label: "Confirm New Password",
+                      placeholder: "Repeat new password",
+                    },
+                  ].map(({ key, label, placeholder }) => (
+                    <div key={key}>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "#374151",
+                          marginBottom: 5,
+                        }}
+                      >
+                        {label}
+                      </label>
+                      <div style={{ position: "relative" }}>
+                        <input
+                          type={showPw[key] ? "text" : "password"}
+                          required
+                          placeholder={placeholder}
+                          value={pw[key]}
+                          onChange={(e) =>
+                            setPw((p) => ({ ...p, [key]: e.target.value }))
+                          }
+                          style={{
+                            ...inp(focused[`pw_${key}`]),
+                            paddingRight: 44,
+                          }}
+                          onFocus={() =>
+                            setFocused((f) => ({ ...f, [`pw_${key}`]: true }))
+                          }
+                          onBlur={() =>
+                            setFocused((f) => ({ ...f, [`pw_${key}`]: false }))
+                          }
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowPw((s) => ({ ...s, [key]: !s[key] }))
+                          }
+                          style={{
+                            position: "absolute",
+                            right: 12,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#94a3b8",
+                          }}
+                        >
+                          {showPw[key] ? (
+                            <EyeOff size={15} />
+                          ) : (
+                            <Eye size={15} />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    type="submit"
+                    disabled={pwLoading}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "10px 22px",
+                      borderRadius: 8,
+                      background: "#1a3c5e",
+                      color: "white",
+                      fontWeight: 600,
+                      fontSize: 14,
+                      border: "none",
+                      cursor: "pointer",
+                      opacity: pwLoading ? 0.7 : 1,
+                      width: "fit-content",
+                    }}
+                  >
+                    <Lock size={15} />{" "}
+                    {pwLoading ? "Updating…" : "Update Password"}
+                  </button>
+                </form>
+              </div>
+            )}
           </>
         )}
 
-        {/* Security info */}
         <div
           style={{
             marginTop: 20,

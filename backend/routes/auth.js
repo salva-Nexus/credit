@@ -341,6 +341,90 @@ router.post("/verify-login-otp", async (req, res) => {
   }
 });
 
+// ── SEND PASSWORD CHANGE OTP ─────────────────────────────────────────────────
+router.post("/send-password-change-otp", auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ msg: "User not found." });
+
+    const otp = genOtp();
+    user.otp = otp;
+    user.otpExpire = Date.now() + 10 * 60 * 1000;
+    await user.save();
+
+    res.json({ msg: "Verification code sent to your email." });
+
+    try {
+      const transporter = createTransporter();
+      await transporter.sendMail({
+        from: '"Credit Vault" <creditvault.support@gmail.com>',
+        to: user.email,
+        subject: "Your Credit Vault password change code",
+        html: otpHtml(user.fullName, otp, "change your password"),
+      });
+      console.log(`✉ Password change OTP sent to ${user.email}: ${otp}`);
+    } catch (err) {
+      console.error("Password change OTP email failed:", err.message);
+      console.log(`📋 Password change OTP for ${user.email}: ${otp}`);
+    }
+  } catch (err) {
+    console.error("Send password change OTP error:", err.message);
+    res.status(500).json({ msg: "Failed to send code." });
+  }
+});
+
+// ── VERIFY PASSWORD CHANGE OTP ───────────────────────────────────────────────
+router.post("/verify-password-change-otp", auth, async (req, res) => {
+  try {
+    const { otp } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ msg: "User not found." });
+    if (user.otp !== String(otp))
+      return res.status(400).json({ msg: "Invalid code." });
+    if (Date.now() > user.otpExpire)
+      return res.status(400).json({ msg: "Code expired. Request a new one." });
+
+    // Mark OTP as verified but keep it so change-password-verified can confirm
+    user.otpVerified = true;
+    await user.save();
+
+    res.json({ msg: "Identity verified." });
+  } catch (err) {
+    console.error("Verify password change OTP error:", err.message);
+    res.status(500).json({ msg: "Verification failed." });
+  }
+});
+
+// ── CHANGE PASSWORD (OTP VERIFIED) ───────────────────────────────────────────
+router.post("/change-password-verified", auth, async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ msg: "User not found." });
+    if (!user.otpVerified)
+      return res
+        .status(403)
+        .json({ msg: "Please verify your identity first." });
+    if (!newPassword || newPassword.length < 8)
+      return res
+        .status(400)
+        .json({ msg: "Password must be at least 8 characters." });
+
+    const bcrypt = require("bcryptjs");
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    user.otp = undefined;
+    user.otpExpire = undefined;
+    user.otpVerified = false;
+    await user.save();
+
+    res.json({ msg: "Password updated successfully." });
+  } catch (err) {
+    console.error("Change password verified error:", err.message);
+    res.status(500).json({ msg: "Password update failed." });
+  }
+});
+
 // ── FORGOT PASSWORD ───────────────────────────────────────────────────────────
 router.post("/forgot-password", async (req, res) => {
   try {
