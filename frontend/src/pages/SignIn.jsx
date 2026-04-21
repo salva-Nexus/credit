@@ -19,66 +19,45 @@ const inp = (focused) => ({
 });
 
 export default function SignIn({ onLogin }) {
+  const [step, setStep] = useState(1); // 1 = credentials, 2 = OTP
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [showPw, setShowPw] = useState(false);
   const [focused, setFocused] = useState({});
   const [status, setStatus] = useState({ type: "", msg: "" });
   const [loading, setLoading] = useState(false);
-  // Verification flow for unverified accounts
+  // For unverified accounts
   const [needsVerify, setNeedsVerify] = useState(false);
-  const [verifyEmail, setVerifyEmail] = useState("");
-  const [otp, setOtp] = useState("");
-  const [otpLoading, setOtpLoading] = useState(false);
+  const [verifyOtp, setVerifyOtp] = useState(["", "", "", "", "", ""]);
   const navigate = useNavigate();
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setStatus({ type: "", msg: "" });
-    try {
-      const res = await API.post("/api/auth/login", { email, password });
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data.user));
-      await onLogin?.();
-      navigate("/dashboard");
-    } catch (err) {
-      const d = err.response?.data;
-      if (d?.needsVerification) {
-        setNeedsVerify(true);
-        setVerifyEmail(d.email || email);
-        setStatus({ type: "error", msg: d.msg });
-      } else {
-        setStatus({
-          type: "error",
-          msg: d?.msg || "Invalid email or password.",
-        });
-      }
-    } finally {
-      setLoading(false);
-    }
+  const otpValue = otp.join("");
+  const verifyOtpValue = verifyOtp.join("");
+
+  const handleOtpChange = (arr, setArr, index, val) => {
+    const digit = val.replace(/\D/g, "").slice(-1);
+    const next = [...arr];
+    next[index] = digit;
+    setArr(next);
+    if (digit && index < 5)
+      document.getElementById(`otp-${index + 1}`)?.focus();
   };
 
-  const handleVerifyOtp = async (e) => {
+  const handleOtpKeyDown = (arr, setArr, index, e) => {
+    if (e.key === "Backspace" && !arr[index] && index > 0)
+      document.getElementById(`otp-${index - 1}`)?.focus();
+  };
+
+  const handleOtpPaste = (setArr, e) => {
     e.preventDefault();
-    setOtpLoading(true);
-    setStatus({ type: "", msg: "" });
-    try {
-      await API.post("/api/auth/verify-otp", { email: verifyEmail, otp });
-      setStatus({ type: "success", msg: "Account verified! Signing you in…" });
-      // Now log them in
-      const res = await API.post("/api/auth/login", { email, password });
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("user", JSON.stringify(res.data.user));
-      await onLogin?.();
-      navigate("/dashboard");
-    } catch (err) {
-      setStatus({
-        type: "error",
-        msg: err.response?.data?.msg || "Invalid code.",
-      });
-    } finally {
-      setOtpLoading(false);
+    const pasted = e.clipboardData
+      .getData("text")
+      .replace(/\D/g, "")
+      .slice(0, 6);
+    if (pasted.length === 6) {
+      setArr(pasted.split(""));
+      document.getElementById("otp-5")?.focus();
     }
   };
 
@@ -99,6 +78,123 @@ export default function SignIn({ onLogin }) {
         {status.msg}
       </div>
     ) : null;
+
+  const OtpBoxes = ({ arr, setArr, prefix = "otp" }) => (
+    <div
+      style={{
+        display: "flex",
+        gap: 10,
+        justifyContent: "center",
+        marginBottom: 20,
+      }}
+      onPaste={(e) => handleOtpPaste(setArr, e)}
+    >
+      {arr.map((digit, i) => (
+        <input
+          key={i}
+          id={`${prefix}-${i}`}
+          type="text"
+          inputMode="numeric"
+          maxLength={1}
+          value={digit}
+          onChange={(e) => handleOtpChange(arr, setArr, i, e.target.value)}
+          onKeyDown={(e) => handleOtpKeyDown(arr, setArr, i, e)}
+          autoFocus={i === 0}
+          style={{
+            width: 52,
+            height: 60,
+            borderRadius: 10,
+            textAlign: "center",
+            fontSize: 24,
+            fontWeight: 800,
+            fontFamily: "monospace",
+            border: `2px solid ${digit ? "#1a3c5e" : "#e2e8f0"}`,
+            background: digit ? "#eff6ff" : "white",
+            color: "#0f172a",
+            outline: "none",
+            transition: "all 0.15s",
+            boxShadow: digit ? "0 0 0 3px rgba(26,60,94,0.1)" : "none",
+          }}
+        />
+      ))}
+    </div>
+  );
+
+  // Step 1 — email + password
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setStatus({ type: "", msg: "" });
+    try {
+      const res = await API.post("/api/auth/login", { email, password });
+      if (res.data.needsVerification) {
+        setNeedsVerify(true);
+        setStatus({ type: "error", msg: res.data.msg });
+      } else if (res.data.requiresOtp) {
+        setStatus({ type: "success", msg: res.data.msg });
+        setStep(2);
+      }
+    } catch (err) {
+      setStatus({
+        type: "error",
+        msg: err.response?.data?.msg || "Invalid email or password.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 2 — login OTP
+  const handleOtpSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setStatus({ type: "", msg: "" });
+    try {
+      const res = await API.post("/api/auth/verify-login-otp", {
+        email,
+        otp: otpValue,
+      });
+      localStorage.setItem("token", res.data.token);
+      localStorage.setItem("user", JSON.stringify(res.data.user));
+      await onLogin?.();
+      navigate("/dashboard");
+    } catch (err) {
+      setStatus({
+        type: "error",
+        msg: err.response?.data?.msg || "Invalid code.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Verify unverified account
+  const handleVerifyAccount = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setStatus({ type: "", msg: "" });
+    try {
+      await API.post("/api/auth/verify-otp", { email, otp: verifyOtpValue });
+      setStatus({ type: "success", msg: "Account verified! Signing you in…" });
+      // Now trigger login OTP
+      const res = await API.post("/api/auth/login", { email, password });
+      if (res.data.requiresOtp) {
+        setNeedsVerify(false);
+        setStep(2);
+        setStatus({
+          type: "success",
+          msg: "Account verified! Check your email for a login code.",
+        });
+      }
+    } catch (err) {
+      setStatus({
+        type: "error",
+        msg: err.response?.data?.msg || "Invalid code.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const stats = [
     { v: "$2.4T+", l: "Assets Under Management" },
@@ -240,11 +336,15 @@ export default function SignIn({ onLogin }) {
               maxWidth: 300,
             }}
           >
-            Access your accounts, transfer funds, and manage your finances —
-            securely, from anywhere.
+            Secure 2-step login protects your account on every sign in.
           </p>
           <div
-            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 10,
+              marginBottom: 24,
+            }}
           >
             {stats.map(({ v, l }) => (
               <div
@@ -282,7 +382,6 @@ export default function SignIn({ onLogin }) {
           </div>
           <div
             style={{
-              marginTop: 28,
               padding: "13px 16px",
               borderRadius: 9,
               background: "#f0fdf4",
@@ -301,7 +400,7 @@ export default function SignIn({ onLogin }) {
                 fontWeight: 500,
               }}
             >
-              FDIC Insured · 256-bit AES Encryption
+              FDIC Insured · 256-bit AES · OTP on every login
             </p>
           </div>
         </div>
@@ -323,7 +422,8 @@ export default function SignIn({ onLogin }) {
           transition={{ duration: 0.35 }}
           style={{ width: "100%", maxWidth: 400 }}
         >
-          {!needsVerify ? (
+          {/* STEP 1 — Credentials */}
+          {step === 1 && !needsVerify && (
             <>
               <h1
                 style={{
@@ -466,36 +566,108 @@ export default function SignIn({ onLogin }) {
                     e.currentTarget.style.background = "#1a3c5e";
                   }}
                 >
-                  {loading ? "Signing in…" : "Sign In →"}
+                  {loading ? "Checking…" : "Continue →"}
                 </button>
               </form>
-              <p
-                style={{
-                  marginTop: 20,
-                  fontSize: 12,
-                  color: "#94a3b8",
-                  textAlign: "center",
-                }}
-              >
-                🔒 Your connection is encrypted with TLS 1.3
-              </p>
             </>
-          ) : (
-            // Unverified account — show OTP entry
+          )}
+
+          {/* STEP 2 — Login OTP */}
+          {step === 2 && (
             <div style={{ textAlign: "center" }}>
               <div
                 style={{
-                  width: 60,
-                  height: 60,
+                  width: 64,
+                  height: 64,
                   background: "#eff6ff",
                   borderRadius: "50%",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  margin: "0 auto 18px",
+                  margin: "0 auto 20px",
                 }}
               >
-                <Shield size={26} color="#1a3c5e" />
+                <Shield size={28} color="#1a3c5e" />
+              </div>
+              <h1
+                style={{
+                  margin: "0 0 8px",
+                  fontSize: 24,
+                  fontWeight: 800,
+                  color: "#0f172a",
+                }}
+              >
+                Enter your login code
+              </h1>
+              <p
+                style={{
+                  margin: "0 0 28px",
+                  fontSize: 14,
+                  color: "#64748b",
+                  lineHeight: 1.6,
+                }}
+              >
+                We sent a 6-digit code to{" "}
+                <strong style={{ color: "#0f172a" }}>{email}</strong>
+              </p>
+              <StatusBox />
+              <form onSubmit={handleOtpSubmit}>
+                <OtpBoxes arr={otp} setArr={setOtp} prefix="otp" />
+                <button
+                  type="submit"
+                  disabled={loading || otpValue.length !== 6}
+                  style={{
+                    width: "100%",
+                    padding: "13px",
+                    borderRadius: 9,
+                    background: "#1a3c5e",
+                    color: "white",
+                    fontWeight: 700,
+                    fontSize: 15,
+                    border: "none",
+                    cursor: "pointer",
+                    opacity: loading || otpValue.length !== 6 ? 0.6 : 1,
+                  }}
+                >
+                  {loading ? "Verifying…" : "Sign In →"}
+                </button>
+              </form>
+              <button
+                onClick={() => {
+                  setStep(1);
+                  setOtp(["", "", "", "", "", ""]);
+                  setStatus({ type: "", msg: "" });
+                }}
+                style={{
+                  marginTop: 14,
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  color: "#64748b",
+                }}
+              >
+                ← Use a different account
+              </button>
+            </div>
+          )}
+
+          {/* Unverified account OTP */}
+          {needsVerify && (
+            <div style={{ textAlign: "center" }}>
+              <div
+                style={{
+                  width: 64,
+                  height: 64,
+                  background: "#fffbeb",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 20px",
+                }}
+              >
+                <Shield size={28} color="#d97706" />
               </div>
               <h1
                 style={{
@@ -508,33 +680,19 @@ export default function SignIn({ onLogin }) {
                 Verify your email first
               </h1>
               <p style={{ margin: "0 0 24px", fontSize: 14, color: "#64748b" }}>
-                A 6-digit code was sent to{" "}
-                <strong style={{ color: "#0f172a" }}>{verifyEmail}</strong>
+                A verification code was sent to{" "}
+                <strong style={{ color: "#0f172a" }}>{email}</strong>
               </p>
               <StatusBox />
-              <form onSubmit={handleVerifyOtp}>
-                <input
-                  value={otp}
-                  onChange={(e) =>
-                    setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                  }
-                  maxLength={6}
-                  placeholder="000000"
-                  autoFocus
-                  style={{
-                    ...inp(true),
-                    fontSize: 30,
-                    fontWeight: 800,
-                    textAlign: "center",
-                    letterSpacing: "0.5em",
-                    fontFamily: "monospace",
-                    border: "2px solid #1a3c5e",
-                    marginBottom: 14,
-                  }}
+              <form onSubmit={handleVerifyAccount}>
+                <OtpBoxes
+                  arr={verifyOtp}
+                  setArr={setVerifyOtp}
+                  prefix="verify"
                 />
                 <button
                   type="submit"
-                  disabled={otpLoading || otp.length !== 6}
+                  disabled={loading || verifyOtpValue.length !== 6}
                   style={{
                     width: "100%",
                     padding: "13px",
@@ -545,10 +703,10 @@ export default function SignIn({ onLogin }) {
                     fontSize: 15,
                     border: "none",
                     cursor: "pointer",
-                    opacity: otpLoading || otp.length !== 6 ? 0.6 : 1,
+                    opacity: loading || verifyOtpValue.length !== 6 ? 0.6 : 1,
                   }}
                 >
-                  {otpLoading ? "Verifying…" : "Verify & Sign In"}
+                  {loading ? "Verifying…" : "Verify & Sign In"}
                 </button>
               </form>
               <button
@@ -565,10 +723,21 @@ export default function SignIn({ onLogin }) {
                   color: "#64748b",
                 }}
               >
-                ← Back to sign in
+                ← Back
               </button>
             </div>
           )}
+
+          <p
+            style={{
+              marginTop: 24,
+              fontSize: 12,
+              color: "#94a3b8",
+              textAlign: "center",
+            }}
+          >
+            🔒 Protected by 256-bit AES encryption
+          </p>
         </motion.div>
       </div>
       <style>{`@media(max-width:800px){.auth-left{display:none!important}}`}</style>

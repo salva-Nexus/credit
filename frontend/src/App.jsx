@@ -20,39 +20,53 @@ const ScrollToTop = () => {
   return null;
 };
 
-// Routes that should have NO navbar/footer (full-page layouts)
-const NO_CHROME_ROUTES = ['/dashboard', '/admin', '/signin', '/signup', '/forgot-password'];
-const hasNoChrome = (path) => NO_CHROME_ROUTES.some(r => path.startsWith(r));
+const NO_CHROME = ['/dashboard', '/admin', '/signin', '/signup', '/forgot-password'];
+const hasNoChrome = (path) => NO_CHROME.some(r => path.startsWith(r));
 
-const LoadingScreen = () => (
+const Spinner = () => (
   <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
     <div style={{ textAlign: 'center' }}>
       <div style={{ width: 36, height: 36, border: '3px solid #e2e8f0', borderTopColor: '#1a3c5e', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
       <p style={{ fontSize: 13, color: '#64748b' }}>Loading…</p>
     </div>
-    <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
+    <style>{'@keyframes spin{to{transform:rotate(360deg)}}'}</style>
   </div>
 );
 
-const AnimatedRoutes = ({ user, onRefresh }) => {
+const AnimatedRoutes = ({ user, loading, onRefresh }) => {
   const location = useLocation();
   const token = localStorage.getItem('token');
   const noChrome = hasNoChrome(location.pathname);
+
+  // Admin guard — wait for user to load before deciding
+  const AdminGuard = ({ children }) => {
+    if (!token) return <Navigate to="/signin" />;
+    if (loading) return <Spinner />;
+    if (user?.role === 'admin') return children;
+    return <Navigate to="/dashboard" />;
+  };
+
+  // Auth guard — wait for user before redirecting
+  const AuthGuard = ({ children }) => {
+    if (loading) return <Spinner />;
+    if (token) return <Navigate to="/dashboard" />;
+    return children;
+  };
 
   return (
     <>
       {!noChrome && <Navbar />}
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
-          <Route path="/" element={token ? <Navigate to="/dashboard" /> : <LandingPage />} />
-          <Route path="/signin" element={token ? <Navigate to="/dashboard" /> : <SignIn onLogin={onRefresh} />} />
-          <Route path="/signup" element={token ? <Navigate to="/dashboard" /> : <SignUp />} />
+          <Route path="/" element={token && !loading ? <Navigate to="/dashboard" /> : <LandingPage />} />
+          <Route path="/signin" element={<AuthGuard><SignIn onLogin={onRefresh} /></AuthGuard>} />
+          <Route path="/signup" element={<AuthGuard><SignUp /></AuthGuard>} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/about" element={<AboutUs />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/dashboard/*" element={token ? <Dashboard user={user} onRefresh={onRefresh} /> : <Navigate to="/signin" />} />
-          <Route path="/admin" element={!token ? <Navigate to="/signin" /> : user === null ? <LoadingScreen /> : user.role === 'admin' ? <AdminPanel /> : <Navigate to="/dashboard" />} />
-          <Route path="/admin/user/:userId" element={!token ? <Navigate to="/signin" /> : user === null ? <LoadingScreen /> : user.role === 'admin' ? <AdminUserView /> : <Navigate to="/dashboard" />} />
+          <Route path="/admin" element={<AdminGuard><AdminPanel /></AdminGuard>} />
+          <Route path="/admin/user/:userId" element={<AdminGuard><AdminUserView /></AdminGuard>} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </AnimatePresence>
@@ -64,34 +78,27 @@ const AnimatedRoutes = ({ user, onRefresh }) => {
 const AppContent = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const token = localStorage.getItem('token');
 
   const refresh = useCallback(async () => {
-    if (!token) { setLoading(false); return; }
+    const token = localStorage.getItem('token');
+    if (!token) { setLoading(false); setUser(null); return; }
     try {
       const res = await API.get('/api/auth/profile');
       setUser(res.data);
     } catch {
       localStorage.removeItem('token');
+      localStorage.removeItem('user');
       setUser(null);
     } finally { setLoading(false); }
-  }, [token]);
+  }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  if (loading) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 40, height: 40, border: '3px solid #e2e8f0', borderTopColor: '#1a3c5e', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
-        <p style={{ fontSize: 13, color: '#64748b', fontWeight: 500 }}>Loading Credit Vault…</p>
-      </div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  );
+  if (loading) return <Spinner />;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <AnimatedRoutes user={user} onRefresh={refresh} />
+      <AnimatedRoutes user={user} loading={loading} onRefresh={refresh} />
     </div>
   );
 };

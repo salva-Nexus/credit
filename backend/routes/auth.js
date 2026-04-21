@@ -243,6 +243,69 @@ router.post("/login", async (req, res) => {
       });
     }
 
+    // Send login OTP
+    const otp = genOtp();
+    user.otp = otp;
+    user.otpExpire = Date.now() + 10 * 60 * 1000;
+    await user.save();
+
+    res.json({
+      requiresOtp: true,
+      email: user.email,
+      msg: "A verification code has been sent to your email.",
+    });
+
+    try {
+      const transporter = createTransporter();
+      await transporter.sendMail({
+        from: '"Credit Vault" <creditvault.support@gmail.com>',
+        to: user.email,
+        subject: "Your Credit Vault login code",
+        html: otpHtml(user.fullName, otp, "complete your sign in"),
+      });
+      console.log(`✉ Login OTP sent to ${user.email}: ${otp}`);
+    } catch (err) {
+      console.error("Login OTP email failed:", err.message);
+      console.log(`📋 Login OTP for ${user.email}: ${otp}`);
+    }
+
+    // Admin notification after response
+    notifyAdmin(
+      `🔐 User Login — ${user.fullName}`,
+      `
+      <div style="font-family:Inter,sans-serif;background:#03080f;color:#ddeeff;padding:48px 40px;max-width:520px;margin:0 auto;border-radius:16px;">
+        <h1 style="font-size:20px;font-weight:700;margin:0 0 20px;">Credit<span style="color:#2563eb;">Vault</span> — User Login</h1>
+        <div style="background:#060d1a;border:1px solid #112240;border-radius:12px;padding:28px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;width:120px;">Full Name</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;font-weight:600;">${user.fullName}</td></tr>
+            <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Email</td><td style="padding:10px 0;font-size:14px;color:#2563eb;">${user.email}</td></tr>
+            <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Role</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;">${user.role}</td></tr>
+            <tr><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Balance</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;">$${(user.balance || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td></tr>
+          </table>
+        </div>
+      </div>`,
+    );
+  } catch (err) {
+    console.error("Login error:", err.message);
+    res.status(500).json({ msg: "Server error during login." });
+  }
+});
+
+// ── VERIFY LOGIN OTP ─────────────────────────────────────────────────────────
+router.post("/verify-login-otp", async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(404).json({ msg: "User not found." });
+    if (user.otp !== String(otp))
+      return res.status(400).json({ msg: "Invalid code." });
+    if (Date.now() > user.otpExpire)
+      return res
+        .status(400)
+        .json({ msg: "Code expired. Please sign in again." });
+
+    user.otp = undefined;
+    user.otpExpire = undefined;
     user.lastLogin = new Date();
     await user.save();
 
@@ -264,25 +327,17 @@ router.post("/login", async (req, res) => {
       },
     });
 
-    // Admin notification after response
     notifyAdmin(
       `🔐 User Login — ${user.fullName}`,
       `
       <div style="font-family:Inter,sans-serif;background:#03080f;color:#ddeeff;padding:48px 40px;max-width:520px;margin:0 auto;border-radius:16px;">
         <h1 style="font-size:20px;font-weight:700;margin:0 0 20px;">Credit<span style="color:#2563eb;">Vault</span> — User Login</h1>
-        <div style="background:#060d1a;border:1px solid #112240;border-radius:12px;padding:28px;">
-          <table style="width:100%;border-collapse:collapse;">
-            <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;width:120px;">Full Name</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;font-weight:600;">${user.fullName}</td></tr>
-            <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Email</td><td style="padding:10px 0;font-size:14px;color:#2563eb;">${user.email}</td></tr>
-            <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Role</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;">${user.role}</td></tr>
-            <tr><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Balance</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;">$${(user.balance || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td></tr>
-          </table>
-        </div>
+        <p style="color:#3d5a7a;">${user.fullName} (${user.email}) signed in.<br>Balance: $${(user.balance || 0).toLocaleString()}</p>
       </div>`,
     );
   } catch (err) {
-    console.error("Login error:", err.message);
-    res.status(500).json({ msg: "Server error during login." });
+    console.error("Verify login OTP error:", err.message);
+    res.status(500).json({ msg: "Verification failed." });
   }
 });
 
