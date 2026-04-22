@@ -1,32 +1,29 @@
 import React from "react";
 
-const typeConfig = {
-  deposit: { label: "Deposit", color: "#16a34a", bg: "#f0fdf4", symbol: "+" },
-  withdrawal: {
-    label: "Withdrawal",
-    color: "#dc2626",
-    bg: "#fef2f2",
-    symbol: "-",
-  },
-  transfer_out: {
-    label: "Transfer Out",
-    color: "#d97706",
-    bg: "#fffbeb",
-    symbol: "-",
-  },
-  transfer_in: {
-    label: "Transfer In",
-    color: "#2563eb",
-    bg: "#eff6ff",
-    symbol: "+",
-  },
-  fee: { label: "Fee", color: "#64748b", bg: "#f8fafc", symbol: "-" },
+const GREEN = "#16a34a";
+const GREEN_BG = "#f0fdf4";
+const RED = "#dc2626";
+const RED_BG = "#fef2f2";
+
+const getColor = (tx) => {
+  if (tx.status === "failed") return { color: RED, bg: RED_BG, symbol: "-" };
+  if (tx.type === "deposit" || tx.type === "transfer_in")
+    return { color: GREEN, bg: GREEN_BG, symbol: "+" };
+  return { color: RED, bg: RED_BG, symbol: "-" };
+};
+
+const typeLabel = {
+  deposit: "Deposit",
+  withdrawal: "Withdrawal",
+  transfer_out: "Transfer Out",
+  transfer_in: "Transfer In",
+  fee: "Fee",
 };
 
 const statusConfig = {
-  completed: { label: "Completed", color: "#16a34a", bg: "#f0fdf4" },
+  completed: { label: "Completed", color: GREEN, bg: GREEN_BG },
   pending: { label: "Pending", color: "#d97706", bg: "#fffbeb" },
-  failed: { label: "Failed", color: "#dc2626", bg: "#fef2f2" },
+  failed: { label: "Failed", color: RED, bg: RED_BG },
   cancelled: { label: "Cancelled", color: "#64748b", bg: "#f8fafc" },
 };
 
@@ -69,8 +66,9 @@ const TransactionTable = ({ transactions = [], limit }) => {
         </thead>
         <tbody>
           {data.map((tx, i) => {
-            const cfg = typeConfig[tx.type] || typeConfig.deposit;
+            const { color, bg, symbol } = getColor(tx);
             const sCfg = statusConfig[tx.status] || statusConfig.pending;
+            const label = typeLabel[tx.type] || tx.type;
             return (
               <tr
                 key={tx._id || i}
@@ -94,21 +92,15 @@ const TransactionTable = ({ transactions = [], limit }) => {
                         width: 36,
                         height: 36,
                         borderRadius: 9,
-                        background: cfg.bg,
+                        background: bg,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         flexShrink: 0,
                       }}
                     >
-                      <span
-                        style={{
-                          fontSize: 16,
-                          color: cfg.color,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {cfg.symbol}
+                      <span style={{ fontSize: 16, color, fontWeight: 700 }}>
+                        {symbol}
                       </span>
                     </div>
                     <div>
@@ -120,12 +112,10 @@ const TransactionTable = ({ transactions = [], limit }) => {
                           color: "#0f172a",
                         }}
                       >
-                        {tx.recipientName
-                          ? `To: ${tx.recipientName}`
-                          : cfg.label}
+                        {tx.recipientName ? `To: ${tx.recipientName}` : label}
                       </p>
                       <p style={{ margin: 0, fontSize: 11, color: "#94a3b8" }}>
-                        {tx.memo || tx.method || tx.recipientBank || cfg.label}
+                        {tx.memo || tx.recipientBank || label}
                       </p>
                     </div>
                   </div>
@@ -150,12 +140,12 @@ const TransactionTable = ({ transactions = [], limit }) => {
                     textAlign: "right",
                     fontWeight: 700,
                     fontSize: 14,
-                    color: cfg.color,
+                    color,
                     fontVariantNumeric: "tabular-nums",
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {cfg.symbol}$
+                  {symbol}$
                   {tx.amount?.toLocaleString("en-US", {
                     minimumFractionDigits: 2,
                   })}
