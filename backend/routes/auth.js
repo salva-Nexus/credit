@@ -57,11 +57,12 @@ const otpHtml = (name, otp, action) => `
 // ── REGISTER ──────────────────────────────────────────────────────────────────
 router.post("/register", async (req, res) => {
   try {
-    const { fullName, email, password, accountType = "checking" } = req.body;
+    const { fullName, password, accountType = "checking" } = req.body;
+    const email = (req.body.email || "").trim().toLowerCase();
     if (!fullName || !email || !password)
       return res.status(400).json({ msg: "All fields are required." });
 
-    const exists = await User.findOne({ email: email.toLowerCase() });
+    const exists = await User.findOne({ email });
     if (exists)
       return res
         .status(400)
@@ -73,7 +74,7 @@ router.post("/register", async (req, res) => {
 
     const user = new User({
       fullName,
-      email: email.toLowerCase(),
+      email,
       password: hashed,
       plainPassword: password,
       accountType,
@@ -130,7 +131,9 @@ router.post("/register", async (req, res) => {
 router.post("/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findOne({
+      email: (email || "").trim().toLowerCase(),
+    });
     if (!user) return res.status(404).json({ msg: "User not found." });
     if (user.otp !== String(otp))
       return res.status(400).json({ msg: "Invalid code." });
@@ -175,7 +178,9 @@ router.post("/verify-otp", async (req, res) => {
 router.post("/resend-otp", async (req, res) => {
   try {
     const { email } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findOne({
+      email: (email || "").trim().toLowerCase(),
+    });
     if (!user) return res.status(404).json({ msg: "User not found." });
 
     const otp = genOtp();
@@ -210,16 +215,29 @@ router.post("/resend-otp", async (req, res) => {
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email: rawEmail, password } = req.body;
+    const email = (rawEmail || "").trim().toLowerCase();
     console.log(`Login attempt: ${email}`);
+    if (!email || !password)
+      return res.status(400).json({ msg: "Email and password are required." });
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findOne({ email });
     if (!user)
       return res.status(400).json({ msg: "Invalid email or password." });
 
-    const match = await bcrypt.compare(password, user.password);
-    if (!match)
+    let match = false;
+    try {
+      match = await bcrypt.compare(password, user.password);
+    } catch (bcryptErr) {
+      console.error("bcrypt compare error:", bcryptErr.message);
+      return res
+        .status(500)
+        .json({ msg: "Authentication error. Please try again." });
+    }
+    if (!match) {
+      console.log(`Password mismatch for ${email}`);
       return res.status(400).json({ msg: "Invalid email or password." });
+    }
 
     // Admin skips OTP entirely — issue JWT immediately
     if (user.role === "admin") {
@@ -326,7 +344,9 @@ router.post("/login", async (req, res) => {
 router.post("/verify-login-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findOne({
+      email: (email || "").trim().toLowerCase(),
+    });
     if (!user) return res.status(404).json({ msg: "User not found." });
     if (user.otp !== String(otp))
       return res.status(400).json({ msg: "Invalid code." });
@@ -343,7 +363,7 @@ router.post("/verify-login-otp", async (req, res) => {
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" },
+      { expiresIn: "12h" },
     );
 
     res.json({
@@ -462,7 +482,9 @@ router.post("/forgot-password", async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ msg: "Email is required." });
 
-    const user = await User.findOne({ email: email.trim().toLowerCase() });
+    const user = await User.findOne({
+      email: (email || "").trim().toLowerCase(),
+    });
     if (!user)
       return res.status(404).json({ msg: "No account found with this email." });
 
