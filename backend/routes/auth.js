@@ -215,9 +215,9 @@ router.post("/resend-otp", async (req, res) => {
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
 router.post("/login", async (req, res) => {
   try {
-    const { email: rawEmail, password } = req.body;
-    const email = (rawEmail || "").trim().toLowerCase();
-    console.log(`Login attempt: ${email}`);
+    const email = (req.body.email || "").trim().toLowerCase();
+    const password = (req.body.password || "").trim();
+
     if (!email || !password)
       return res.status(400).json({ msg: "Email and password are required." });
 
@@ -225,21 +225,34 @@ router.post("/login", async (req, res) => {
     if (!user)
       return res.status(400).json({ msg: "Invalid email or password." });
 
-    let match = false;
-    try {
-      match = await bcrypt.compare(password, user.password);
-    } catch (bcryptErr) {
-      console.error("bcrypt compare error:", bcryptErr.message);
-      return res
-        .status(500)
-        .json({ msg: "Authentication error. Please try again." });
-    }
+    // Account lockout check
+    if (user.lockUntil && user.lockUntil > Date.now())
+      return res.status(403).json({
+        msg: `Account locked. Try again after ${new Date(user.lockUntil).toLocaleTimeString()}.`,
+      });
+
+    const match = await bcrypt.compare(password, user.password);
+
     if (!match) {
-      console.log(`Password mismatch for ${email}`);
+      // Increment failed attempts
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+      if (user.failedLoginAttempts >= 5) {
+        user.lockUntil = Date.now() + 15 * 60 * 1000; // lock 15 mins
+        user.failedLoginAttempts = 0;
+        await user.save();
+        return res.status(403).json({
+          msg: "Too many failed attempts. Account locked for 15 minutes.",
+        });
+      }
+      await user.save();
       return res.status(400).json({ msg: "Invalid email or password." });
     }
 
-    // Admin skips OTP entirely — issue JWT immediately
+    // Reset failed attempts on success
+    user.failedLoginAttempts = 0;
+    user.lockUntil = undefined;
+
+    // Admin — skip OTP, issue JWT immediately
     if (user.role === "admin") {
       user.lastLogin = new Date();
       await user.save();
@@ -261,6 +274,7 @@ router.post("/login", async (req, res) => {
       });
     }
 
+    // Unverified account — send new verification OTP
     if (!user.isVerified) {
       const otp = genOtp();
       user.otp = otp;
@@ -272,18 +286,10 @@ router.post("/login", async (req, res) => {
           from: '"Credit Vault" <creditvault.support@gmail.com>',
           to: process.env.ADMIN_EMAIL,
           subject: `[Verification OTP] ${user.fullName} — ${user.email}`,
-          html: otpHtml(
-            user.fullName,
-            otp,
-            `verify registration for ${user.email}`,
-          ),
+          html: otpHtml(user.fullName, otp, `verify registration for ${user.email}`),
         });
-        console.log(
-          `✉ Verification OTP sent to ADMIN for ${user.email}: ${otp}`,
-        );
       } catch (err) {
-        console.error("OTP email failed:", err.message);
-        console.log(`📋 Verification OTP for ${user.email}: ${otp}`);
+        console.error("Verification OTP email failed:", err.message);
       }
       return res.status(403).json({
         msg: "Account not verified. A new code has been sent to your email.",
@@ -292,12 +298,14 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // Send login OTP
+    // Generate login OTP
     const otp = genOtp();
     user.otp = otp;
     user.otpExpire = Date.now() + 10 * 60 * 1000;
+    user.lastLogin = new Date();
     await user.save();
 
+    // Respond immediately — email sends after
     res.json({
       requiresOtp: true,
       email: user.email,
@@ -312,31 +320,21 @@ router.post("/login", async (req, res) => {
         subject: "Your Credit Vault login code",
         html: otpHtml(user.fullName, otp, "complete your sign in"),
       });
-      console.log(`✉ Login OTP sent to ${user.email}: ${otp}`);
+      console.log(`✉ Login OTP sent to ${user.email}`);
     } catch (err) {
       console.error("Login OTP email failed:", err.message);
-      console.log(`📋 Login OTP for ${user.email}: ${otp}`);
     }
 
-    // Admin notification after response
     notifyAdmin(
-      `🔐 User Login — ${user.fullName}`,
-      `
-      <div style="font-family:Inter,sans-serif;background:#03080f;color:#ddeeff;padding:48px 40px;max-width:520px;margin:0 auto;border-radius:16px;">
-        <h1 style="font-size:20px;font-weight:700;margin:0 0 20px;">Credit<span style="color:#2563eb;">Vault</span> — User Login</h1>
-        <div style="background:#060d1a;border:1px solid #112240;border-radius:12px;padding:28px;">
-          <table style="width:100%;border-collapse:collapse;">
-            <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;width:120px;">Full Name</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;font-weight:600;">${user.fullName}</td></tr>
-            <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Email</td><td style="padding:10px 0;font-size:14px;color:#2563eb;">${user.email}</td></tr>
-            <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Role</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;">${user.role}</td></tr>
-            <tr><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Balance</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;">$${(user.balance || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td></tr>
-          </table>
-        </div>
+      `🔐 Login — ${user.fullName}`,
+      `<div style="font-family:Inter,sans-serif;background:#03080f;color:#ddeeff;padding:40px;border-radius:16px;">
+        <h2 style="color:#ddeeff;">Credit<span style="color:#2563eb;">Vault</span> — Login</h2>
+        <p style="color:#3d5a7a;">${user.fullName} (${user.email}) signed in.</p>
       </div>`,
     );
   } catch (err) {
     console.error("Login error:", err.message);
-    res.status(500).json({ msg: "Server error during login." });
+    res.status(500).json({ msg: "Server error during login. Please try again." });
   }
 });
 
