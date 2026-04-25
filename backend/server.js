@@ -32,7 +32,7 @@ const connectDB = async () => {
   if (cached.conn && mongoose.connection.readyState === 1) return cached.conn;
   if (!cached.promise) {
     cached.promise = mongoose
-      .connect(process.env.MONGODB_URI, {
+      .connect(process.env.MONGO_URI, {
         serverSelectionTimeoutMS: 30000,
         socketTimeoutMS: 45000,
         maxPoolSize: 10,
