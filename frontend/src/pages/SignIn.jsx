@@ -9,7 +9,7 @@ const inp = (focused) => ({
   background: '#f8fafc', border: `1.5px solid ${focused ? '#1a3c5e' : '#e2e8f0'}`,
   color: '#0f172a', outline: 'none', transition: 'border-color 0.2s',
   fontFamily: 'Inter, sans-serif', boxSizing: 'border-box',
-}); //
+});
 
 export default function SignIn({ onLogin }) {
   const [step, setStep] = useState(1); // 1 = credentials, 2 = OTP
@@ -211,6 +211,10 @@ export default function SignIn({ onLogin }) {
                   </div>
                   <div style={{ position: 'relative' }}>
                     <input type={showPw ? 'text' : 'password'} required placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)}
+                      autoComplete="current-password"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck="false"
                       style={{ ...inp(focused.password), paddingRight: 44 }}
                       onFocus={() => setFocused(f => ({ ...f, password: true }))}
                       onBlur={() => setFocused(f => ({ ...f, password: false }))} />
