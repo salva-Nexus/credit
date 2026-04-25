@@ -46,32 +46,6 @@ mongoose
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on port ${PORT}`);
-
-      // ── Keep-alive ping ────────────────────────────────────────────────
-      // Render free tier spins down after 15 min of inactivity.
-      // Ping our own health endpoint every 14 minutes to stay awake.
-      const BACKEND_URL =
-        process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-      setInterval(
-        async () => {
-          try {
-            const http = require("http");
-            const https = require("https");
-            const url = `${BACKEND_URL}/api/health`;
-            const client = url.startsWith("https") ? https : http;
-            client
-              .get(url, (res) => {
-                console.log(`Keep-alive ping → ${res.statusCode}`);
-              })
-              .on("error", (err) => {
-                console.warn("Keep-alive ping failed:", err.message);
-              });
-          } catch (e) {
-            console.warn("Keep-alive error:", e.message);
-          }
-        },
-        5 * 60 * 1000,
-      ); // every 5 minutes
     });
   })
   .catch((err) => {
