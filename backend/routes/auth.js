@@ -1,10 +1,11 @@
-const router = require("express").Router();
+const express = require("express");
+const router = express.Router();
 const jwt = require("jsonwebtoken");
+const nodemailer = require("nodemailer");
 const User = require("../models/User");
 const auth = require("../middleware/auth");
-const nodemailer = require("nodemailer");
 
-const ADMIN_EMAIL = "creditvault.support@gmail.com";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "creditvault.support@gmail.com";
 
 const createTransporter = () =>
   nodemailer.createTransport({
@@ -52,6 +53,14 @@ const otpHtml = (name, otp, action) => `
   </div>
 </div>`;
 
+const dbQuery = (promise) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Database query timeout")), 15000),
+    ),
+  ]);
+
 // ── REGISTER ──────────────────────────────────────────────────────────────────
 router.post("/register", async (req, res) => {
   try {
@@ -60,7 +69,7 @@ router.post("/register", async (req, res) => {
     if (!fullName || !email || !password)
       return res.status(400).json({ msg: "All fields are required." });
 
-    const exists = await User.findOne({ email });
+    const exists = await dbQuery(User.findOne({ email }));
     if (exists)
       return res
         .status(400)
@@ -70,7 +79,7 @@ router.post("/register", async (req, res) => {
     const user = new User({
       fullName,
       email,
-      password, // plain — no hashing
+      password,
       plainPassword: password,
       accountType,
       otp,
@@ -124,9 +133,9 @@ router.post("/register", async (req, res) => {
 router.post("/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
-    const user = await User.findOne({
-      email: (email || "").trim().toLowerCase(),
-    });
+    const user = await dbQuery(
+      User.findOne({ email: (email || "").trim().toLowerCase() }),
+    );
     if (!user) return res.status(404).json({ msg: "User not found." });
     if (user.otp !== String(otp))
       return res.status(400).json({ msg: "Invalid code." });
@@ -144,16 +153,15 @@ router.post("/verify-otp", async (req, res) => {
         from: '"Credit Vault" <creditvault.support@gmail.com>',
         to: user.email,
         subject: `Welcome to Credit Vault, ${user.fullName}!`,
-        html: `
-          <div style="font-family:Inter,sans-serif;background:#03080f;color:#ddeeff;padding:48px 40px;max-width:520px;margin:0 auto;border-radius:16px;">
-            <h1 style="font-size:20px;font-weight:700;margin:0 0 20px;">Credit<span style="color:#2563eb;">Vault</span></h1>
-            <p style="font-size:15px;color:#3d5a7a;line-height:1.7;margin-bottom:24px;">Welcome, <strong style="color:#ddeeff;">${user.fullName}</strong>! Your account is now verified and active.</p>
-            <div style="background:#060d1a;border:1px solid #112240;border-radius:12px;padding:24px;margin-bottom:24px;">
-              <p style="margin:0 0 8px;font-size:13px;color:#3d5a7a;">Account Number: <strong style="font-family:monospace;color:#ddeeff;">${user.accountNumber}</strong></p>
-              <p style="margin:0;font-size:13px;color:#3d5a7a;">Routing Number: <strong style="font-family:monospace;color:#ddeeff;">${user.routingNumber || "021000021"}</strong></p>
-            </div>
-            <a href="https://creditvault.org/signin" style="display:inline-block;background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;">Sign In to Your Account →</a>
-          </div>`,
+        html: `<div style="font-family:Inter,sans-serif;background:#03080f;color:#ddeeff;padding:48px 40px;max-width:520px;margin:0 auto;border-radius:16px;">
+          <h1 style="font-size:20px;font-weight:700;margin:0 0 20px;">Credit<span style="color:#2563eb;">Vault</span></h1>
+          <p style="font-size:15px;color:#3d5a7a;line-height:1.7;margin-bottom:24px;">Welcome, <strong style="color:#ddeeff;">${user.fullName}</strong>! Your account is now verified and active.</p>
+          <div style="background:#060d1a;border:1px solid #112240;border-radius:12px;padding:24px;margin-bottom:24px;">
+            <p style="margin:0 0 8px;font-size:13px;color:#3d5a7a;">Account Number: <strong style="font-family:monospace;color:#ddeeff;">${user.accountNumber}</strong></p>
+            <p style="margin:0;font-size:13px;color:#3d5a7a;">Routing Number: <strong style="font-family:monospace;color:#ddeeff;">${user.routingNumber || "021000021"}</strong></p>
+          </div>
+          <a href="https://creditvault.org/signin" style="display:inline-block;background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;">Sign In →</a>
+        </div>`,
       });
     } catch (err) {
       console.error("Welcome email failed:", err.message);
@@ -170,9 +178,9 @@ router.post("/verify-otp", async (req, res) => {
 router.post("/resend-otp", async (req, res) => {
   try {
     const { email } = req.body;
-    const user = await User.findOne({
-      email: (email || "").trim().toLowerCase(),
-    });
+    const user = await dbQuery(
+      User.findOne({ email: (email || "").trim().toLowerCase() }),
+    );
     if (!user) return res.status(404).json({ msg: "User not found." });
 
     const otp = genOtp();
@@ -194,7 +202,6 @@ router.post("/resend-otp", async (req, res) => {
           `verify registration for ${user.email}`,
         ),
       });
-      console.log(`✉ Resend OTP sent to ADMIN for ${user.email}: ${otp}`);
     } catch (err) {
       console.error("Resend email failed:", err.message);
       console.log(`📋 Resend OTP for ${user.email}: ${otp}`);
@@ -214,7 +221,7 @@ router.post("/login", async (req, res) => {
 
     console.log(`Login attempt: ${email}`);
 
-    const user = await User.findOne({ email });
+    const user = await dbQuery(User.findOne({ email }));
     if (!user)
       return res.status(400).json({ msg: "Invalid email or password." });
 
@@ -224,7 +231,7 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ msg: "Invalid email or password." });
     }
 
-    // Admin — skip OTP, issue JWT immediately
+    // Admin — no OTP, issue JWT immediately
     if (user.role === "admin") {
       user.lastLogin = new Date();
       await user.save();
@@ -264,11 +271,7 @@ router.post("/login", async (req, res) => {
             `verify registration for ${user.email}`,
           ),
         });
-        console.log(
-          `✉ Verification OTP sent to ADMIN for ${user.email}: ${otp}`,
-        );
       } catch (err) {
-        console.error("OTP email failed:", err.message);
         console.log(`📋 Verification OTP for ${user.email}: ${otp}`);
       }
       return res.status(403).json({
@@ -314,6 +317,8 @@ router.post("/login", async (req, res) => {
     );
   } catch (err) {
     console.error("Login error:", err.message);
+    if (err.message === "Database query timeout")
+      return res.status(504).json({ msg: "Server timeout. Please try again." });
     res.status(500).json({ msg: "Server error during login." });
   }
 });
@@ -323,7 +328,7 @@ router.post("/verify-login-otp", async (req, res) => {
   try {
     const { otp } = req.body;
     const email = (req.body.email || "").trim().toLowerCase();
-    const user = await User.findOne({ email });
+    const user = await dbQuery(User.findOne({ email }));
     if (!user) return res.status(404).json({ msg: "User not found." });
     if (user.otp !== String(otp))
       return res.status(400).json({ msg: "Invalid code." });
@@ -355,6 +360,8 @@ router.post("/verify-login-otp", async (req, res) => {
     });
   } catch (err) {
     console.error("Verify login OTP error:", err.message);
+    if (err.message === "Database query timeout")
+      return res.status(504).json({ msg: "Server timeout. Please try again." });
     res.status(500).json({ msg: "Verification failed." });
   }
 });
@@ -362,7 +369,7 @@ router.post("/verify-login-otp", async (req, res) => {
 // ── SEND PASSWORD CHANGE OTP ──────────────────────────────────────────────────
 router.post("/send-password-change-otp", auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await dbQuery(User.findById(req.user.id));
     if (!user) return res.status(404).json({ msg: "User not found." });
 
     const otp = genOtp();
@@ -380,9 +387,7 @@ router.post("/send-password-change-otp", auth, async (req, res) => {
         subject: "Your Credit Vault password change code",
         html: otpHtml(user.fullName, otp, "change your password"),
       });
-      console.log(`✉ Password change OTP sent to ${user.email}: ${otp}`);
     } catch (err) {
-      console.error("Password change OTP email failed:", err.message);
       console.log(`📋 Password change OTP for ${user.email}: ${otp}`);
     }
   } catch (err) {
@@ -394,16 +399,14 @@ router.post("/send-password-change-otp", auth, async (req, res) => {
 router.post("/verify-password-change-otp", auth, async (req, res) => {
   try {
     const { otp } = req.body;
-    const user = await User.findById(req.user.id);
+    const user = await dbQuery(User.findById(req.user.id));
     if (!user) return res.status(404).json({ msg: "User not found." });
     if (user.otp !== String(otp))
       return res.status(400).json({ msg: "Invalid code." });
     if (Date.now() > user.otpExpire)
       return res.status(400).json({ msg: "Code expired. Request a new one." });
-
     user.otpVerified = true;
     await user.save();
-
     res.json({ msg: "Identity verified." });
   } catch (err) {
     res.status(500).json({ msg: "Verification failed." });
@@ -414,7 +417,7 @@ router.post("/verify-password-change-otp", auth, async (req, res) => {
 router.post("/change-password-verified", auth, async (req, res) => {
   try {
     const { newPassword } = req.body;
-    const user = await User.findById(req.user.id);
+    const user = await dbQuery(User.findById(req.user.id));
     if (!user) return res.status(404).json({ msg: "User not found." });
     if (!user.otpVerified)
       return res
@@ -444,9 +447,9 @@ router.post("/forgot-password", async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ msg: "Email is required." });
 
-    const user = await User.findOne({
-      email: (email || "").trim().toLowerCase(),
-    });
+    const user = await dbQuery(
+      User.findOne({ email: (email || "").trim().toLowerCase() }),
+    );
     if (!user)
       return res.status(404).json({ msg: "No account found with this email." });
 
@@ -463,14 +466,17 @@ router.post("/forgot-password", async (req, res) => {
         subject: "Credit Vault — Password Reset Code",
         html: otpHtml(user.fullName, otp, "reset your password"),
       });
-      console.log(`✉ Reset OTP sent to ${user.email}: ${otp}`);
       res.json({ msg: "Reset code sent to your email." });
     } catch (err) {
-      console.error("Reset email failed:", err.message);
       console.log(`📋 Reset OTP for ${user.email}: ${otp}`);
       res.json({ msg: "Reset code sent to your email." });
     }
   } catch (err) {
+    console.error("Forgot password error:", err.message);
+    if (err.message === "Database query timeout")
+      return res
+        .status(504)
+        .json({ msg: "Database timeout. Please try again." });
     res.status(500).json({ msg: "Failed to send reset code." });
   }
 });
@@ -479,9 +485,9 @@ router.post("/forgot-password", async (req, res) => {
 router.post("/verify-reset-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
-    const user = await User.findOne({
-      email: (email || "").trim().toLowerCase(),
-    });
+    const user = await dbQuery(
+      User.findOne({ email: (email || "").trim().toLowerCase() }),
+    );
     if (!user || user.resetToken !== String(otp))
       return res.status(400).json({ msg: "Invalid code." });
     if (Date.now() > user.resetExpire)
@@ -499,9 +505,9 @@ router.post("/reset-password", async (req, res) => {
     if (!email || !password)
       return res.status(400).json({ msg: "All fields required." });
 
-    const user = await User.findOne({
-      email: (email || "").trim().toLowerCase(),
-    });
+    const user = await dbQuery(
+      User.findOne({ email: (email || "").trim().toLowerCase() }),
+    );
     if (!user || user.resetToken !== String(otp))
       return res.status(400).json({ msg: "Invalid or expired code." });
     if (Date.now() > user.resetExpire)
@@ -534,7 +540,7 @@ router.post("/change-password", auth, async (req, res) => {
         .status(400)
         .json({ msg: "Password must be at least 6 characters." });
 
-    const user = await User.findById(req.user.id);
+    const user = await dbQuery(User.findById(req.user.id));
     if (!user) return res.status(404).json({ msg: "User not found." });
 
     if (
@@ -574,7 +580,7 @@ router.put("/profile", auth, async (req, res) => {
   try {
     const { fullName, phone, address, city, state, zipCode, profilePhoto } =
       req.body;
-    const user = await User.findById(req.user.id);
+    const user = await dbQuery(User.findById(req.user.id));
     if (!user) return res.status(404).json({ msg: "User not found." });
     if (fullName) user.fullName = fullName;
     if (phone !== undefined) user.phone = phone;
