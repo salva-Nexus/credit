@@ -1,3 +1,4 @@
+// server.js
 require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
@@ -51,6 +52,16 @@ const connectDB = async () => {
   cached.conn = await cached.promise;
   return cached.conn;
 };
+
+// Keep Atlas connection warm — ping every 4 minutes
+setInterval(async () => {
+  try {
+    await mongoose.connection.db.admin().ping();
+    console.log("🏓 DB keep-alive ping");
+  } catch (err) {
+    console.warn("Keep-alive ping failed:", err.message);
+  }
+}, 4 * 60 * 1000); // every 4 minutes
 
 // Ensure DB is ready before any route handler runs
 app.use(async (req, res, next) => {
